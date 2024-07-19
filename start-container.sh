@@ -47,10 +47,12 @@ sudo docker run -itd \
 i=1
 while [ $i -lt $N ]
 do
+	port="8${i}42"
 	sudo docker rm -f hadoop-slave$i &> /dev/null
 	echo "start hadoop-slave$i container..."
 	sudo docker run -itd \
 	                --net=hadoop \
+                	-p $port:8042 \
 	                --name hadoop-slave$i \
 	                --hostname hadoop-slave$i \
 	                hpc:hadoop &> /dev/null

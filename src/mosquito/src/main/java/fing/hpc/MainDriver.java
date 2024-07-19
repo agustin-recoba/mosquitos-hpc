@@ -1,9 +1,10 @@
 package fing.hpc;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.Date;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.util.HashMap;
 
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
@@ -11,6 +12,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
 
 import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
@@ -26,131 +28,188 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
 class ProductosParser {
-    public String categoria;
-    public int clave;
+	public String categoria;
+	public long clave;
 
-    public void parse(String record) {
-    	var records = record.split(";", 0);
-    	
-        categoria = records[0];
-        clave = Integer.parseInt(records[1]);
-    }
+	public void parse(String record) {
+		String[] records = record.split(";", 0);
 
-    public void parse(Text record) {
-        parse(record.toString());
-    }
+		categoria = records[0];
+		clave = Long.parseLong(records[1]);
+	}
+
+	public void parse(Text record) {
+		parse(record.toString());
+	}
 }
 
 class LocalesParser {
 
-    public String departamento;
-    public int clave;
+	public String departamento;
+	public long clave;
 
-    public void parse(String record) {
-    	var records = record.split(";", 0);
-    	
-    	departamento = records[0];
-        clave = Integer.parseInt(records[1]);
-    }
+	public void parse(String record) {
+		String[] records = record.split(";", 0);
 
-    public void parse(Text record) {
-        parse(record.toString());
-    }
+		departamento = records[0];
+		clave = Long.parseLong(records[1]);
+	}
+
+	public void parse(Text record) {
+		parse(record.toString());
+	}
 }
-
 
 class VentasParser {
-    public int clave_local;
-    public int clave_producto;
-    public LocalDate fecha;
-    public int cant_vta_original;
-    public int cant_vta;
-    public float precio_unitario;
-    public int clave_venta;
+	public long clave_local;
+	public long clave_producto;
+	public String fecha;
+	public float cant_vta_original;
+	public float cant_vta;
+	public float precio_unitario;
+	public long clave_venta;
 
-    public void parse(String record) {
-    	var records = record.split(";", 0);
-    	
-    	clave_local = Integer.parseInt(records[0]);
-    	clave_producto = Integer.parseInt(records[1]);
-    	fecha = LocalDate.parse(records[2]);
-    	cant_vta_original = Integer.parseInt(records[3]);
-    	cant_vta = Integer.parseInt(records[4]);
-    	precio_unitario = Float.parseFloat(records[5]);
-    	clave_venta = Integer.parseInt(records[6]);
-    }
+	public void parse(String record) {
+		String[] records = record.split(";", 0);
 
-    public void parse(Text record) {
-        parse(record.toString());
-    }
+		clave_local = Long.parseLong(records[0]);
+		clave_producto = Long.parseLong(records[1]);
+		fecha = records[2];
+		cant_vta_original = Float.parseFloat(records[3]);
+		cant_vta = Float.parseFloat(records[4]);
+		precio_unitario = Float.parseFloat(records[5]);
+		clave_venta = Long.parseLong(records[6]);
+	}
+
+	public void parse(Text record) {
+		parse(record.toString());
+	}
 }
 
+class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> {
 
-class MaxTemperatureReducer
-        extends Reducer<Text, IntWritable, Text, IntWritable> {
+	@Override
+	public void reduce(Text key, Iterable<FloatWritable> values, Context context)
+			throws IOException, InterruptedException {
 
-    @Override
-    public void reduce(Text key, Iterable<IntWritable> values,
-            Context context)
-            throws IOException, InterruptedException {
-
-        int maxValue = Integer.MIN_VALUE;
-        for (IntWritable value : values) {
-            maxValue = Math.max(maxValue, value.get());
-        }
-        context.write(key, new IntWritable(maxValue));
-    }
+		float maxValue = Float.MIN_VALUE;
+		for (FloatWritable value : values) {
+			maxValue = Math.max(maxValue, value.get());
+		}
+		context.write(key, new FloatWritable(maxValue));
+	}
 }
 
-class ReadHDFSJoinMapper
-        extends Mapper<LongWritable, Text, Text, FloatWritable> {
+class ReadHDFSJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable> {
 
-    enum Temperature {
-        MALFORMED
-    }
+	private HashMap<Long, String> baseLocales;
+	private HashMap<Long, String> baseProductos;
 
-    private LocalesParser localesParser = new LocalesParser();
-    private ProductosParser productosParser = new ProductosParser();
-    private VentasParser ventasParser = new VentasParser();
+	private LocalesParser localesParser = new LocalesParser();
+	private ProductosParser productosParser = new ProductosParser();
+	private VentasParser ventasParser = new VentasParser();
 
-    @Override
-    public void map(LongWritable key, Text value, Context context)
-            throws IOException, InterruptedException {
-    	// HACER JOIN
-    	
-    	ventasParser.parse(value);
-        context.write(new Text(Integer.toString(ventasParser.clave_producto)), new FloatWritable(ventasParser.precio_unitario));
-    }
+	@Override
+	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		// HACER JOIN
+		try {
+			ventasParser.parse(value);
+			context.write(new Text(Long.toString(ventasParser.clave_producto)),
+					new FloatWritable(ventasParser.precio_unitario));
+
+		} catch (NumberFormatException e) {
+			System.err.println(e);
+		}
+	}
+
+	public void setup(Context context) throws IOException, InterruptedException {
+		leerCahceHDFS(context);
+	}
+
+	public void leerCahceHDFS(Context context) throws IOException, InterruptedException {
+		baseLocales = new HashMap<Long, String>();
+		baseProductos = new HashMap<Long, String>();
+
+		URI[] cacheFiles = context.getCacheFiles();
+
+		if (cacheFiles != null && cacheFiles.length == 2) {
+			for (URI cacheFile : cacheFiles) {
+				boolean esLocales = cacheFile.getPath().contains("locales");
+				try {
+					String line = "";
+
+					FileSystem fs = FileSystem.get(context.getConfiguration());
+					Path getFilePath = new Path(cacheFile.toString());
+
+					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
+
+					while ((line = reader.readLine()) != null) {
+						if (esLocales) {
+							localesParser.parse(line);
+							System.out.println(line);
+
+							baseLocales.put(localesParser.clave, localesParser.departamento);
+						} else {
+							productosParser.parse(line);
+							System.out.println(line);
+
+							baseProductos.put(productosParser.clave, productosParser.categoria);
+						}
+					}
+				} catch (NumberFormatException e) {
+					System.err.println(e);
+				} catch (Exception e) {
+					throw new IOException("No se pudo leer el archivo de cache.");
+				}
+			}
+		} else {
+			throw new IOException("Archivo chache no se cargó.");
+		}
+	}
 }
 
 public class MainDriver extends Configured implements Tool {
 
-    public int run(String[] args) throws Exception {
-        if (args.length != 2) {
-            System.err.printf("Usage: %s [generic options] <input> <output>\n",
-                    getClass().getSimpleName());
-            ToolRunner.printGenericCommandUsage(System.err);
-            return -1;
-        }
+	public int run(String[] args) throws Exception {
+		if (args.length != 2) {
+			System.err.printf("Uso: %s <input> <output>\n", getClass().getSimpleName());
+			ToolRunner.printGenericCommandUsage(System.err);
+			return -1;
+		}
 
-        Job job = Job.getInstance(getConf(), "Max temperature");
-        job.setJarByClass(getClass());
+		Job job = Job.getInstance(getConf(), "HPC - Mosquitos");
+		job.setJarByClass(getClass());
 
-        FileInputFormat.addInputPath(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		FileInputFormat.addInputPath(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-        job.setMapperClass(ReadHDFSJoinMapper.class);
-        job.setCombinerClass(MaxTemperatureReducer.class);
-        job.setReducerClass(MaxTemperatureReducer.class);
+		job.setMapperClass(ReadHDFSJoinMapper.class);
+		job.setCombinerClass(MaxFloatReducer.class);
+		job.setReducerClass(MaxFloatReducer.class);
 
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(IntWritable.class);
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(FloatWritable.class);
 
-        return job.waitForCompletion(true) ? 0 : 1;
-    }
+		try {
+			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/locales.csv"));
+		} catch (Exception e) {
+			System.out.println("Archivo de locales no se agregó al caché distribuido");
+			System.exit(1);
+		}
 
-    public static void main(String[] args) throws Exception {
-        int exitCode = ToolRunner.run(new MainDriver(), args);
-        System.exit(exitCode);
-    }
+		try {
+			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/productos.csv"));
+		} catch (Exception e) {
+			System.out.println("Archivo de productos no se agregó al caché distribuido");
+			System.exit(1);
+		}
+
+		return job.waitForCompletion(true) ? 0 : 1;
+	}
+
+	public static void main(String[] args) throws Exception {
+		int exitCode = ToolRunner.run(new MainDriver(), args);
+		System.exit(exitCode);
+	}
+
 }
