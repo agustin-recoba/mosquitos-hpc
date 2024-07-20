@@ -9,22 +9,18 @@ import java.util.HashMap;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Reducer;
-
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
 class ProductosParser {
@@ -92,15 +88,15 @@ class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> 
 	public void reduce(Text key, Iterable<FloatWritable> values, Context context)
 			throws IOException, InterruptedException {
 
-		float maxValue = Float.MIN_VALUE;
-		for (FloatWritable value : values) {
-			maxValue = Math.max(maxValue, value.get());
+		float maxPrice = Float.MIN_VALUE;
+		for (FloatWritable valor : values) {
+			maxPrice = Math.max(maxPrice, valor.get());
 		}
-		context.write(key, new FloatWritable(maxValue));
+		context.write(key, new FloatWritable(maxPrice));
 	}
 }
 
-class ReadHDFSJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable> {
+class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable> {
 
 	private HashMap<Long, String> baseLocales;
 	private HashMap<Long, String> baseProductos;
@@ -109,13 +105,37 @@ class ReadHDFSJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable>
 	private ProductosParser productosParser = new ProductosParser();
 	private VentasParser ventasParser = new VentasParser();
 
+	public static Text crearClave(String categoria, String departamento, String fecha) {
+		return new Text(categoria + ";" + departamento + ";" + fecha);
+	}
+
 	@Override
 	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-		// HACER JOIN
 		try {
 			ventasParser.parse(value);
-			context.write(new Text(Long.toString(ventasParser.clave_producto)),
-					new FloatWritable(ventasParser.precio_unitario));
+
+			long prod = ventasParser.clave_producto;
+			String categoria = baseProductos.get(prod);
+
+			long local = ventasParser.clave_local;
+			String departamento = baseLocales.get(local);
+
+			if (categoria == null || categoria.equals("CENSURADO"))
+				return;
+
+			if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
+				return;
+
+			Text newKey = crearClave(categoria, departamento, ventasParser.fecha);
+
+			// new LongWritable(ventasParser.clave_local)
+			// new LongWritable(ventasParser.clave_producto)
+			// new LongWritable(ventasParser.clave_venta)
+			// new FloatWritable(ventasParser.precio_unitario)
+			// new FloatWritable(ventasParser.cant_vta)
+			// new FloatWritable(ventasParser.cant_vta_original)
+
+			context.write(newKey, new FloatWritable(ventasParser.precio_unitario));
 
 		} catch (NumberFormatException e) {
 			System.err.println(e);
@@ -183,7 +203,7 @@ public class MainDriver extends Configured implements Tool {
 		FileInputFormat.addInputPath(job, new Path(args[0]));
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-		job.setMapperClass(ReadHDFSJoinMapper.class);
+		job.setMapperClass(HdfsHashJoinMapper.class);
 		job.setCombinerClass(MaxFloatReducer.class);
 		job.setReducerClass(MaxFloatReducer.class);
 

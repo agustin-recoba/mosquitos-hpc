@@ -12,6 +12,7 @@ sudo docker rm -f hadoop-master &> /dev/null
 i=1
 while [ $i -lt $N ]
 do
+	echo "remove hadoop-slave$i container..."
 	sudo docker rm -f hadoop-slave$i &> /dev/null
 	i=$(( $i + 1 ))
 done 
