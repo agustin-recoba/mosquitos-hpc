@@ -36,14 +36,14 @@ RUN mv /tmp/ssh_config ~/.ssh/config && \
     mv /tmp/start-hadoop.sh ~/start-hadoop.sh && \
     mv /tmp/stop-hadoop.sh ~/stop-hadoop.sh && \
     mv /tmp/dfs-put-data.sh ~/dfs-put-data.sh && \
-    mv /tmp/run-wordcount.sh ~/run-wordcount.sh
+    mv /tmp/run-job.sh ~/run-job.sh
 
 RUN chmod 700 ~/.ssh && \
     chmod 600 ~/.ssh/*
 
 RUN chmod +x ~/start-hadoop.sh && \
     chmod +x ~/stop-hadoop.sh && \
-    chmod +x ~/run-wordcount.sh && \
+    chmod +x ~/run-job.sh && \
     chmod +x $HADOOP_HOME/sbin/start-dfs.sh && \
     chmod +x $HADOOP_HOME/sbin/start-yarn.sh 
 
