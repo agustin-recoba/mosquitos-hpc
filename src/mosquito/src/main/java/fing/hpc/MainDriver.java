@@ -83,7 +83,6 @@ class VentasParser {
 }
 
 class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> {
-
 	@Override
 	public void reduce(Text key, Iterable<FloatWritable> values, Context context)
 			throws IOException, InterruptedException {
@@ -143,10 +142,10 @@ class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable>
 	}
 
 	public void setup(Context context) throws IOException, InterruptedException {
-		leerCahceHDFS(context);
+		leerCacheHDFS(context);
 	}
 
-	public void leerCahceHDFS(Context context) throws IOException, InterruptedException {
+	public void leerCacheHDFS(Context context) throws IOException, InterruptedException {
 		baseLocales = new HashMap<Long, String>();
 		baseProductos = new HashMap<Long, String>();
 
@@ -189,6 +188,12 @@ class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable>
 }
 
 public class MainDriver extends Configured implements Tool {
+	static final Class<? extends Mapper> job_map_class = HdfsHashJoinMapper.class;
+	static final Class<? extends Reducer> job_combine_class = MaxFloatReducer.class;
+	static final Class<? extends Reducer> job_reduce_class = MaxFloatReducer.class;
+	
+	static final Class<? extends Writable> out_key_class = Text.class;
+	static final Class<? extends Writable> out_value_class = FloatWritable.class;
 
 	public int run(String[] args) throws Exception {
 		if (args.length != 2) {
@@ -203,13 +208,19 @@ public class MainDriver extends Configured implements Tool {
 		FileInputFormat.addInputPath(job, new Path(args[0]));
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-		job.setMapperClass(HdfsHashJoinMapper.class);
-		job.setCombinerClass(MaxFloatReducer.class);
-		job.setReducerClass(MaxFloatReducer.class);
+		job.setMapperClass(job_map_class);
+		job.setCombinerClass(job_combine_class);
+		job.setReducerClass(job_reduce_class);
 
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(FloatWritable.class);
+		job.setOutputKeyClass(out_key_class);
+		job.setOutputValueClass(out_value_class);
 
+		preRun(job);
+
+		return job.waitForCompletion(true) ? 0 : 1;
+	}
+
+	void preRun(Job job) {
 		try {
 			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/locales.csv"));
 		} catch (Exception e) {
@@ -223,8 +234,6 @@ public class MainDriver extends Configured implements Tool {
 			System.out.println("Archivo de productos no se agregó al caché distribuido");
 			System.exit(1);
 		}
-
-		return job.waitForCompletion(true) ? 0 : 1;
 	}
 
 	public static void main(String[] args) throws Exception {
