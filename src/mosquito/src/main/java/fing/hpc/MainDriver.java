@@ -105,7 +105,7 @@ class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable>
 	private VentasParser ventasParser = new VentasParser();
 
 	public static Text crearClave(String categoria, String departamento, String fecha) {
-		return new Text(categoria + ";" + departamento + ";" + fecha);
+		return new Text(categoria + "\t" + departamento + "\t" + fecha);
 	}
 
 	@Override
