@@ -4,14 +4,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
@@ -103,105 +98,6 @@ class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> 
 	}
 }
 
-class SegmentedRegression {
-
-	public static class DataPoint {
-		Date date;
-		float value;
-
-		public DataPoint(String dateStr, float value) throws ParseException {
-			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-			this.date = sdf.parse(dateStr);
-			this.value = value;
-		}
-	}
-
-	public static List<Date> detectChangepoints(Iterable<DataPoint> dataPoints) {
-		List<DataPoint> data = new ArrayList<DataPoint>();
-		for (DataPoint point : dataPoints) {
-			data.add(point);
-		}
-
-		List<Date> changepoints = new ArrayList<Date>();
-		int n = data.size();
-
-		for (int i = 1; i < n - 1; i++) {
-			List<DataPoint> leftSegment = data.subList(0, i + 1);
-			List<DataPoint> rightSegment = data.subList(i + 1, n);
-
-			double leftError = calculateSegmentError(leftSegment);
-			double rightError = calculateSegmentError(rightSegment);
-
-			double totalError = leftError + rightError;
-			double currentError = calculateSegmentError(data);
-
-			if (judgePoint(totalError, currentError)) {
-				changepoints.add(data.get(i).date);
-			}
-		}
-
-		return changepoints;
-	}
-
-	private static boolean judgePoint(double segmentationError, double noSegmentationError) {
-		return segmentationError < 0.8 * noSegmentationError;
-	}
-
-	private static double calculateSegmentError(List<DataPoint> segment) {
-		int n = segment.size();
-		if (n < 2)
-			return 0;
-
-		double sumX = 0;
-		double sumY = 0;
-		double sumXY = 0;
-		double sumXX = 0;
-
-		for (DataPoint dp : segment) {
-			long x = dp.date.getTime();
-			double y = dp.value;
-
-			sumX += x;
-			sumY += y;
-			sumXY += x * y;
-			sumXX += x * x;
-		}
-
-		double slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-		double intercept = (sumY - slope * sumX) / n;
-
-		double error = 0;
-		for (DataPoint dp : segment) {
-			long x = dp.date.getTime();
-			double y = dp.value;
-			double predictedY = slope * x + intercept;
-			error += Math.pow(y - predictedY, 2);
-		}
-
-		return error;
-	}
-
-	class SegmentedRegressionReducer extends Reducer<Text, Text, Text, Text> {
-		@Override
-		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-
-			List<DataPoint> dataPoints = new ArrayList<>();
-			for (Text t : values) {
-				ParText vars = new ParText(t);
-				try {
-					dataPoints.add(new DataPoint(vars.x, Float.parseFloat(vars.y)));
-				} catch (ParseException e) {
-					continue;
-				}
-			}
-
-			List<Date> changePoints = detectChangepoints(dataPoints);
-
-			context.write(key, new Text(changePoints.toString()));
-		}
-	}
-}
-
 class ParText {
 	public Text text;
 
@@ -230,14 +126,14 @@ class Clave {
 	public String categoria;
 	public String departemento;
 	public String fecha;
-	public int codigoProd;
-	public int codigoLocal;
+	public long codigoProd;
+	public long codigoLocal;
 
 	private static final String NULL_S = "NULL";
 	private static final String NULL_D = "2000-01-01";
-	private static final int NULL_I = -1;
+	private static final short NULL_I = -1;
 
-	public Clave(String categoria, String departamento, String fecha, int codigoProd, int codigoLocal) {
+	public Clave(String categoria, String departamento, String fecha, long codigoProd, long codigoLocal) {
 		this.categoria = categoria;
 		this.departemento = departamento;
 		this.fecha = fecha;
@@ -256,8 +152,8 @@ class Clave {
 		this(categoria, NULL_S, fecha, NULL_I, NULL_I);
 	}
 
-	public Clave(String categoria, String departamento, int codigoProd) {
-		this(categoria, departamento, NULL_D, codigoProd, NULL_I);
+	public Clave(String categoria, String fecha, long codigoProd) {
+		this(categoria, NULL_S, fecha, codigoProd, NULL_I);
 	}
 
 	public Clave(String categoria) {
@@ -415,6 +311,11 @@ class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text,
 			if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
 				return;
 
+			// FILTRADO DE VENTAS (devoluciones, precios disparatados)
+			if (ventasParser.cant_vta_original < 0 || ventasParser.precio_unitario < 10
+					|| ventasParser.precio_unitario > 2000)
+				return;
+
 			// new LongWritable(ventasParser.clave_local)
 			// new LongWritable(ventasParser.clave_producto)
 			// new LongWritable(ventasParser.clave_venta)
@@ -423,7 +324,7 @@ class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text,
 			// new FloatWritable(ventasParser.cant_vta_original)
 
 			// ELECCION DE CLAVE
-			context.write(new Clave(categoria).text,
+			context.write(new Clave(categoria, ventasParser.fecha.substring(0, 4), ventasParser.clave_producto).text,
 					new ParText(ventasParser.fecha, Float.toString(ventasParser.precio_unitario)).text);
 
 		} catch (NumberFormatException e) {
@@ -432,8 +333,6 @@ class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text,
 	}
 
 }
-
-
 
 public class MainDriver extends Configured implements Tool {
 	static final Class<? extends Mapper> job_map_class = HdfsHashJoinMapper.class;
