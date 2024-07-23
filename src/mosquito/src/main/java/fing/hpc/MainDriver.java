@@ -4,13 +4,21 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.commons.collections.OrderedMap;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -95,51 +103,249 @@ class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> 
 	}
 }
 
-class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable> {
+class SegmentedRegression {
 
-	private HashMap<Long, String> baseLocales;
-	private HashMap<Long, String> baseProductos;
+	public static class DataPoint {
+		Date date;
+		float value;
 
-	private LocalesParser localesParser = new LocalesParser();
-	private ProductosParser productosParser = new ProductosParser();
-	private VentasParser ventasParser = new VentasParser();
-
-	public static Text crearClave(String categoria, String departamento, String fecha) {
-		return new Text(categoria + "\t" + departamento + "\t" + fecha);
-	}
-
-	@Override
-	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-		try {
-			ventasParser.parse(value);
-
-			long prod = ventasParser.clave_producto;
-			String categoria = baseProductos.get(prod);
-
-			long local = ventasParser.clave_local;
-			String departamento = baseLocales.get(local);
-
-			if (categoria == null || categoria.equals("CENSURADO"))
-				return;
-
-			if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
-				return;
-
-			Text newKey = crearClave(categoria, departamento, ventasParser.fecha);
-
-			// new LongWritable(ventasParser.clave_local)
-			// new LongWritable(ventasParser.clave_producto)
-			// new LongWritable(ventasParser.clave_venta)
-			// new FloatWritable(ventasParser.precio_unitario)
-			// new FloatWritable(ventasParser.cant_vta)
-			// new FloatWritable(ventasParser.cant_vta_original)
-
-			context.write(newKey, new FloatWritable(ventasParser.precio_unitario));
-
-		} catch (NumberFormatException e) {
-			System.err.println(e);
+		public DataPoint(String dateStr, float value) throws ParseException {
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+			this.date = sdf.parse(dateStr);
+			this.value = value;
 		}
 	}
+
+	public static List<Date> detectChangepoints(Iterable<DataPoint> dataPoints) {
+		List<DataPoint> data = new ArrayList<DataPoint>();
+		for (DataPoint point : dataPoints) {
+			data.add(point);
+		}
+
+		List<Date> changepoints = new ArrayList<Date>();
+		int n = data.size();
+
+		for (int i = 1; i < n - 1; i++) {
+			List<DataPoint> leftSegment = data.subList(0, i + 1);
+			List<DataPoint> rightSegment = data.subList(i + 1, n);
+
+			double leftError = calculateSegmentError(leftSegment);
+			double rightError = calculateSegmentError(rightSegment);
+
+			double totalError = leftError + rightError;
+			double currentError = calculateSegmentError(data);
+
+			if (judgePoint(totalError, currentError)) {
+				changepoints.add(data.get(i).date);
+			}
+		}
+
+		return changepoints;
+	}
+
+	private static boolean judgePoint(double segmentationError, double noSegmentationError) {
+		return segmentationError < 0.8 * noSegmentationError;
+	}
+
+	private static double calculateSegmentError(List<DataPoint> segment) {
+		int n = segment.size();
+		if (n < 2)
+			return 0;
+
+		double sumX = 0;
+		double sumY = 0;
+		double sumXY = 0;
+		double sumXX = 0;
+
+		for (DataPoint dp : segment) {
+			long x = dp.date.getTime();
+			double y = dp.value;
+
+			sumX += x;
+			sumY += y;
+			sumXY += x * y;
+			sumXX += x * x;
+		}
+
+		double slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+		double intercept = (sumY - slope * sumX) / n;
+
+		double error = 0;
+		for (DataPoint dp : segment) {
+			long x = dp.date.getTime();
+			double y = dp.value;
+			double predictedY = slope * x + intercept;
+			error += Math.pow(y - predictedY, 2);
+		}
+
+		return error;
+	}
+
+	class SegmentedRegressionReducer extends Reducer<Text, Text, Text, Text> {
+		@Override
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+
+			List<DataPoint> dataPoints = new ArrayList<>();
+			for (Text t : values) {
+				ParText vars = new ParText(t);
+				try {
+					dataPoints.add(new DataPoint(vars.x, Float.parseFloat(vars.y)));
+				} catch (ParseException e) {
+					continue;
+				}
+			}
+
+			List<Date> changePoints = detectChangepoints(dataPoints);
+
+			context.write(key, new Text(changePoints.toString()));
+		}
+	}
+}
+
+class ParText {
+	public Text text;
+
+	public String x;
+	public String y;
+
+	public ParText(String x, String y) {
+		this.x = x;
+		this.y = y;
+
+		this.text = new Text(this.x + "\t" + this.y);
+	}
+
+	public ParText(Text text) {
+		this.text = text;
+
+		String[] items = text.toString().split("\t");
+		this.x = items[0];
+		this.y = items[1];
+	}
+}
+
+class Clave {
+	public Text text;
+
+	public String categoria;
+	public String departemento;
+	public String fecha;
+	public int codigoProd;
+	public int codigoLocal;
+
+	private static final String NULL_S = "NULL";
+	private static final String NULL_D = "2000-01-01";
+	private static final int NULL_I = -1;
+
+	public Clave(String categoria, String departamento, String fecha, int codigoProd, int codigoLocal) {
+		this.categoria = categoria;
+		this.departemento = departamento;
+		this.fecha = fecha;
+		this.codigoProd = codigoProd;
+		this.codigoLocal = codigoLocal;
+
+		this.text = new Text(this.categoria + "\t" + this.departemento + "\t" + this.fecha + "\t" + this.codigoProd
+				+ "\t" + this.codigoLocal);
+	}
+
+	public Clave(String categoria, String departamento, String fecha) {
+		this(categoria, departamento, fecha, NULL_I, NULL_I);
+	}
+
+	public Clave(String categoria, String fecha) {
+		this(categoria, NULL_S, fecha, NULL_I, NULL_I);
+	}
+
+	public Clave(String categoria, String departamento, int codigoProd) {
+		this(categoria, departamento, NULL_D, codigoProd, NULL_I);
+	}
+
+	public Clave(String categoria) {
+		this(categoria, NULL_S, NULL_D, NULL_I, NULL_I);
+	}
+
+	public Clave(Text text) {
+		this.text = text;
+
+		String[] items = text.toString().split("\t");
+		this.categoria = items[0];
+		this.departemento = items[1];
+		this.fecha = items[2];
+		this.codigoProd = Integer.parseInt(items[3]);
+		this.codigoLocal = Integer.parseInt(items[4]);
+	}
+}
+
+class LectorCacheHdfsMapper<INKEY, INVAL, OUTKEY, OUTVAL> extends Mapper<INKEY, INVAL, OUTKEY, OUTVAL> {
+	/*
+	 * MAPPER QUE PUEDE ACCEDER A LAS BASES DE PRODUCTOS O LOCALES DESDE EL CACHE
+	 * DISTRIBUIDO
+	 */
+
+	public HashMap<Long, String> baseLocales;
+	public HashMap<Long, String> baseProductos;
+
+	public LocalesParser localesParser = new LocalesParser();
+	public ProductosParser productosParser = new ProductosParser();
+
+	public void setup(Context context) throws IOException, InterruptedException {
+		leerCacheHDFS(context);
+	}
+
+	public void leerCacheHDFS(Context context) throws IOException, InterruptedException {
+		baseLocales = new HashMap<Long, String>();
+		baseProductos = new HashMap<Long, String>();
+
+		URI[] cacheFiles = context.getCacheFiles();
+
+		if (cacheFiles != null && cacheFiles.length == 2) {
+			for (URI cacheFile : cacheFiles) {
+				boolean esLocales = cacheFile.getPath().contains("locales");
+				try {
+					String line = "";
+
+					FileSystem fs = FileSystem.get(context.getConfiguration());
+					Path getFilePath = new Path(cacheFile.toString());
+
+					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
+
+					while ((line = reader.readLine()) != null) {
+						if (esLocales) {
+							localesParser.parse(line);
+							System.out.println(line);
+
+							baseLocales.put(localesParser.clave, localesParser.departamento);
+						} else {
+							productosParser.parse(line);
+							System.out.println(line);
+
+							baseProductos.put(productosParser.clave, productosParser.categoria);
+						}
+					}
+				} catch (NumberFormatException e) {
+					System.err.println(e);
+				} catch (Exception e) {
+					throw new IOException("No se pudo leer el archivo de cache.");
+				}
+			}
+		} else {
+			throw new IOException("Archivo chache no se cargó.");
+		}
+	}
+
+}
+
+class LectorCacheHdfsReducer<INKEY, INVAL, OUTKEY, OUTVAL> extends Reducer<INKEY, INVAL, OUTKEY, OUTVAL> {
+	/*
+	 * REDUCER QUE PUEDE ACCEDER A LAS BASES DE PRODUCTOS O LOCALES DESDE EL CACHE
+	 * DISTRIBUIDO
+	 */
+
+	public HashMap<Long, String> baseLocales;
+	public HashMap<Long, String> baseProductos;
+
+	public LocalesParser localesParser = new LocalesParser();
+	public ProductosParser productosParser = new ProductosParser();
 
 	public void setup(Context context) throws IOException, InterruptedException {
 		leerCacheHDFS(context);
@@ -187,13 +393,55 @@ class HdfsHashJoinMapper extends Mapper<LongWritable, Text, Text, FloatWritable>
 	}
 }
 
+class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text, Text> {
+	private VentasParser ventasParser = new VentasParser();
+
+	@Override
+	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		try {
+			ventasParser.parse(value);
+
+			long prod = ventasParser.clave_producto;
+			String categoria = baseProductos.get(prod);
+
+			long local = ventasParser.clave_local;
+			String departamento = baseLocales.get(local);
+
+			// FILTRADO DE CATEGORIAS
+			if (categoria == null || categoria.equals("CENSURADO"))
+				return;
+
+			// FILTRADO DE DEPARTAMENTOS
+			if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
+				return;
+
+			// new LongWritable(ventasParser.clave_local)
+			// new LongWritable(ventasParser.clave_producto)
+			// new LongWritable(ventasParser.clave_venta)
+			// new FloatWritable(ventasParser.precio_unitario)
+			// new FloatWritable(ventasParser.cant_vta)
+			// new FloatWritable(ventasParser.cant_vta_original)
+
+			// ELECCION DE CLAVE
+			context.write(new Clave(categoria).text,
+					new ParText(ventasParser.fecha, Float.toString(ventasParser.precio_unitario)).text);
+
+		} catch (NumberFormatException e) {
+			System.err.println(e);
+		}
+	}
+
+}
+
+
+
 public class MainDriver extends Configured implements Tool {
 	static final Class<? extends Mapper> job_map_class = HdfsHashJoinMapper.class;
-	static final Class<? extends Reducer> job_combine_class = MaxFloatReducer.class;
-	static final Class<? extends Reducer> job_reduce_class = MaxFloatReducer.class;
-	
+	static final Class<? extends Reducer> job_combine_class = null;
+	static final Class<? extends Reducer> job_reduce_class = SegmentedRegression.SegmentedRegressionReducer.class;
+
 	static final Class<? extends Writable> out_key_class = Text.class;
-	static final Class<? extends Writable> out_value_class = FloatWritable.class;
+	static final Class<? extends Writable> out_value_class = Text.class;
 
 	public int run(String[] args) throws Exception {
 		if (args.length != 2) {
@@ -209,7 +457,8 @@ public class MainDriver extends Configured implements Tool {
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
 		job.setMapperClass(job_map_class);
-		job.setCombinerClass(job_combine_class);
+		if (job_combine_class != null)
+			job.setCombinerClass(job_combine_class);
 		job.setReducerClass(job_reduce_class);
 
 		job.setOutputKeyClass(out_key_class);

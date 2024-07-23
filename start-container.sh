@@ -59,6 +59,8 @@ do
 	i=$(( $i + 1 ))
 done 
 
+echo -e "\n Starting yarn and dfs... \n"
 sudo docker exec hadoop-master bash /root/start-hadoop.sh
 
+echo -e "\n Uploading data to HDFS... \n"
 sudo docker exec hadoop-master bash /root/dfs-put-data.sh
