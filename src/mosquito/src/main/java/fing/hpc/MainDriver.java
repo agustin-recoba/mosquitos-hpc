@@ -1,90 +1,18 @@
 package fing.hpc;
 
 import java.io.IOException;
-import java.net.URI;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
-import java.util.List;
 
 import org.apache.hadoop.io.FloatWritable;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.commons.collections.OrderedMap;
-import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.util.Tool;
-import org.apache.hadoop.util.ToolRunner;
-
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 
-class ProductosParser {
-	public String categoria;
-	public long clave;
 
-	public void parse(String record) {
-		String[] records = record.split(";", 0);
-
-		categoria = records[0];
-		clave = Long.parseLong(records[1]);
-	}
-
-	public void parse(Text record) {
-		parse(record.toString());
-	}
-}
-
-class LocalesParser {
-
-	public String departamento;
-	public long clave;
-
-	public void parse(String record) {
-		String[] records = record.split(";", 0);
-
-		departamento = records[0];
-		clave = Long.parseLong(records[1]);
-	}
-
-	public void parse(Text record) {
-		parse(record.toString());
-	}
-}
-
-class VentasParser {
-	public long clave_local;
-	public long clave_producto;
-	public String fecha;
-	public float cant_vta_original;
-	public float cant_vta;
-	public float precio_unitario;
-	public long clave_venta;
-
-	public void parse(String record) {
-		String[] records = record.split(";", 0);
-
-		clave_local = Long.parseLong(records[0]);
-		clave_producto = Long.parseLong(records[1]);
-		fecha = records[2];
-		cant_vta_original = Float.parseFloat(records[3]);
-		cant_vta = Float.parseFloat(records[4]);
-		precio_unitario = Float.parseFloat(records[5]);
-		clave_venta = Long.parseLong(records[6]);
-	}
-
-	public void parse(Text record) {
-		parse(record.toString());
-	}
-}
 
 class DataPoint {
 	Date date;
@@ -192,18 +120,16 @@ class IdentityMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, KEYIN, VALUE
 }
 
 class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Text> {
-	private VentasParser ventasParser = new VentasParser();
+	Parsers.Ventas ventasParser = new Parsers.Ventas();
 
 	@Override
 	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
 		try {
 			ventasParser.parse(value);
 
-			long prod = ventasParser.clave_producto;
-			String categoria = cacheHdfs.baseProductos.get(prod);
+			String categoria = cacheHdfs.baseProductos.get(ventasParser.clave_producto);
 
-			long local = ventasParser.clave_local;
-			String departamento = cacheHdfs.baseLocales.get(local);
+			String departamento = cacheHdfs.baseLocales.get(ventasParser.clave_local);
 
 			// FILTRADO DE CATEGORIAS
 			if (categoria == null || categoria.equals("CENSURADO"))
@@ -235,49 +161,6 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
 	}
 }
 
-class BaseDriver extends Configured implements Tool {
-	public int run(String[] args) throws Exception {
-		if (args.length != 2) {
-			System.err.printf("Uso: %s <input> <output>\n", getClass().getSimpleName());
-			ToolRunner.printGenericCommandUsage(System.err);
-			return -1;
-		}
-
-		Path prevTempPath = new Path("/tmp/"+args[1]);
-		
-		int lastCode = 0;
-		for (int i = 1; i <= getJobCount(); i++) {
-			Job job = Job.getInstance(getConf(), "HPC - Mosquitos - " + i);
-			job.setJarByClass(getClass());
-			Path newTempPath = new Path("/tmp/"+args[1]+i);
-			
-			if (i == 1) // Si es el primer job
-				FileInputFormat.addInputPath(job, new Path(args[0]));
-			else
-				FileInputFormat.addInputPath(job, prevTempPath);
-			
-			if (i == getJobCount()) // Si es el ultimo job
-				FileOutputFormat.setOutputPath(job, new Path(args[1]));
-			else
-				FileOutputFormat.setOutputPath(job, newTempPath);
-
-			configureJob(job, i);
-
-			lastCode = job.waitForCompletion(true) ? 0 : 1;
-			prevTempPath = newTempPath;
-		}
-		return lastCode;
-	}
-
-	static int getJobCount() {
-		return 1;
-	}
-
-	public void configureJob(Job job, int i) throws Exception {
-		// USAR PARA SETEAR MAPPERS, REDUCERS, ETC
-	}
-}
-
 public class MainDriver extends CacheHdfs.CDriver {
 	@Override
 	public void configureJob(Job job, int i) {
@@ -288,5 +171,4 @@ public class MainDriver extends CacheHdfs.CDriver {
 		job.setOutputKeyClass(Text.class);
 		job.setOutputValueClass(Text.class);
 	}
-
 }

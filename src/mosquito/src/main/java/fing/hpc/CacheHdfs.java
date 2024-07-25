@@ -8,75 +8,39 @@ import java.util.HashMap;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.Mapper.Context;
-import org.apache.hadoop.util.ToolRunner;
 
 class CacheHdfs {
 
-	public HashMap<Long, String> baseLocales;
-	public HashMap<Long, String> baseProductos;
+	public HashMap<Long, String> baseLocales = new HashMap<Long, String>();
+	public HashMap<Long, String> baseProductos= new HashMap<Long, String>();
 
-	public LocalesParser localesParser = new LocalesParser();
-	public ProductosParser productosParser = new ProductosParser();
+	public Parsers.Locales localesParser = new Parsers.Locales();
+	public Parsers.Productos productosParser = new Parsers.Productos();
 
 	public void leer(Mapper.Context context) throws IOException, InterruptedException {
-		baseLocales = new HashMap<Long, String>();
-		baseProductos = new HashMap<Long, String>();
-
 		URI[] cacheFiles = context.getCacheFiles();
+		FileSystem fs = FileSystem.get(context.getConfiguration());
 
-		if (cacheFiles != null && cacheFiles.length == 2) {
-			for (URI cacheFile : cacheFiles) {
-				boolean esLocales = cacheFile.getPath().contains("locales");
-				try {
-					String line = "";
-
-					FileSystem fs = FileSystem.get(context.getConfiguration());
-					Path getFilePath = new Path(cacheFile.toString());
-
-					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
-
-					while ((line = reader.readLine()) != null) {
-						if (esLocales) {
-							localesParser.parse(line);
-							System.out.println(line);
-
-							baseLocales.put(localesParser.clave, localesParser.departamento);
-						} else {
-							productosParser.parse(line);
-							System.out.println(line);
-
-							baseProductos.put(productosParser.clave, productosParser.categoria);
-						}
-					}
-				} catch (NumberFormatException e) {
-					System.err.println(e);
-				} catch (Exception e) {
-					throw new IOException("No se pudo leer el archivo de cache.");
-				}
-			}
-		} else {
-			throw new IOException("Archivo chache no se cargó.");
-		}
+		read(cacheFiles, fs);
 	}
 
 	public void leer(Reducer.Context context) throws IOException, InterruptedException {
-		baseLocales = new HashMap<Long, String>();
-		baseProductos = new HashMap<Long, String>();
-
 		URI[] cacheFiles = context.getCacheFiles();
+		FileSystem fs = FileSystem.get(context.getConfiguration());
 
+		read(cacheFiles, fs);
+	}
+
+	public void read(URI[] cacheFiles, FileSystem fs) throws IOException {
 		if (cacheFiles != null && cacheFiles.length == 2) {
 			for (URI cacheFile : cacheFiles) {
 				boolean esLocales = cacheFile.getPath().contains("locales");
 				try {
 					String line = "";
 
-					FileSystem fs = FileSystem.get(context.getConfiguration());
 					Path getFilePath = new Path(cacheFile.toString());
 
 					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
@@ -121,7 +85,7 @@ class CacheHdfs {
 		}
 	}
 	
-	public static class CDriver extends BaseDriver {
+	public static class CDriver extends ExtensibleDriver {
 
 		@Override
 		public void configureJob(Job job, int i) throws Exception {
