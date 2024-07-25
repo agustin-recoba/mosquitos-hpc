@@ -5,7 +5,7 @@ N=${1:-3}
 
 # master container
 echo "remove hadoop-master container..."
-sudo docker rm -f hadoop-master &> /dev/null
+docker rm -f hadoop-master &> /dev/null
 
 
 # slave container
@@ -13,6 +13,6 @@ i=1
 while [ $i -lt $N ]
 do
 	echo "remove hadoop-slave$i container..."
-	sudo docker rm -f hadoop-slave$i &> /dev/null
+	docker rm -f hadoop-slave$i &> /dev/null
 	i=$(( $i + 1 ))
 done 

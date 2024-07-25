@@ -20,19 +20,19 @@ done
 
 echo ""
 
-sudo docker pull ubuntu:14.04
+docker pull ubuntu:14.04
 
 echo -e "\nbuild docker hadoop image\n"
 
 # rebuild kiwenlau/hadoop image
-sudo docker build -t hpc:hadoop .
+docker build -t hpc:hadoop .
 
 echo ""
 
 # start hadoop master container
-sudo docker rm -f hadoop-master &> /dev/null
+docker rm -f hadoop-master &> /dev/null
 echo "start hadoop-master container..."
-sudo docker run -itd \
+docker run -itd \
                 --net=hadoop \
                 -p 50070:50070 \
                 -p 8088:8088 \
@@ -48,9 +48,9 @@ i=1
 while [ $i -lt $N ]
 do
 	port="8${i}42"
-	sudo docker rm -f hadoop-slave$i &> /dev/null
+	docker rm -f hadoop-slave$i &> /dev/null
 	echo "start hadoop-slave$i container..."
-	sudo docker run -itd \
+	docker run -itd \
 	                --net=hadoop \
                 	-p $port:8042 \
 	                --name hadoop-slave$i \
@@ -60,7 +60,7 @@ do
 done 
 
 echo -e "\n Starting yarn and dfs... \n"
-sudo docker exec hadoop-master bash /root/start-hadoop.sh
+docker exec hadoop-master bash /root/start-hadoop.sh
 
 echo -e "\n Uploading data to HDFS... \n"
-sudo docker exec hadoop-master bash /root/dfs-put-data.sh
+docker exec hadoop-master bash /root/dfs-put-data.sh

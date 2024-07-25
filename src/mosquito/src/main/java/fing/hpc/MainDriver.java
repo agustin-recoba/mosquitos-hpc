@@ -1,12 +1,14 @@
 package fing.hpc;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URI;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Date;
+import java.util.List;
 
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
@@ -15,7 +17,6 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.commons.collections.OrderedMap;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
@@ -82,6 +83,18 @@ class VentasParser {
 
 	public void parse(Text record) {
 		parse(record.toString());
+	}
+}
+
+class DataPoint {
+	Date date;
+	float value;
+	static final SimpleDateFormat formater = new SimpleDateFormat("yyyy-MM-dd");
+
+	public DataPoint(String dateStr, float value) throws ParseException {
+
+		this.date = formater.parse(dateStr);
+		this.value = value;
 	}
 }
 
@@ -172,124 +185,13 @@ class Clave {
 	}
 }
 
-class LectorCacheHdfsMapper<INKEY, INVAL, OUTKEY, OUTVAL> extends Mapper<INKEY, INVAL, OUTKEY, OUTVAL> {
-	/*
-	 * MAPPER QUE PUEDE ACCEDER A LAS BASES DE PRODUCTOS O LOCALES DESDE EL CACHE
-	 * DISTRIBUIDO
-	 */
-
-	public HashMap<Long, String> baseLocales;
-	public HashMap<Long, String> baseProductos;
-
-	public LocalesParser localesParser = new LocalesParser();
-	public ProductosParser productosParser = new ProductosParser();
-
-	public void setup(Context context) throws IOException, InterruptedException {
-		leerCacheHDFS(context);
-	}
-
-	public void leerCacheHDFS(Context context) throws IOException, InterruptedException {
-		baseLocales = new HashMap<Long, String>();
-		baseProductos = new HashMap<Long, String>();
-
-		URI[] cacheFiles = context.getCacheFiles();
-
-		if (cacheFiles != null && cacheFiles.length == 2) {
-			for (URI cacheFile : cacheFiles) {
-				boolean esLocales = cacheFile.getPath().contains("locales");
-				try {
-					String line = "";
-
-					FileSystem fs = FileSystem.get(context.getConfiguration());
-					Path getFilePath = new Path(cacheFile.toString());
-
-					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
-
-					while ((line = reader.readLine()) != null) {
-						if (esLocales) {
-							localesParser.parse(line);
-							System.out.println(line);
-
-							baseLocales.put(localesParser.clave, localesParser.departamento);
-						} else {
-							productosParser.parse(line);
-							System.out.println(line);
-
-							baseProductos.put(productosParser.clave, productosParser.categoria);
-						}
-					}
-				} catch (NumberFormatException e) {
-					System.err.println(e);
-				} catch (Exception e) {
-					throw new IOException("No se pudo leer el archivo de cache.");
-				}
-			}
-		} else {
-			throw new IOException("Archivo chache no se cargó.");
-		}
-	}
-
-}
-
-class LectorCacheHdfsReducer<INKEY, INVAL, OUTKEY, OUTVAL> extends Reducer<INKEY, INVAL, OUTKEY, OUTVAL> {
-	/*
-	 * REDUCER QUE PUEDE ACCEDER A LAS BASES DE PRODUCTOS O LOCALES DESDE EL CACHE
-	 * DISTRIBUIDO
-	 */
-
-	public HashMap<Long, String> baseLocales;
-	public HashMap<Long, String> baseProductos;
-
-	public LocalesParser localesParser = new LocalesParser();
-	public ProductosParser productosParser = new ProductosParser();
-
-	public void setup(Context context) throws IOException, InterruptedException {
-		leerCacheHDFS(context);
-	}
-
-	public void leerCacheHDFS(Context context) throws IOException, InterruptedException {
-		baseLocales = new HashMap<Long, String>();
-		baseProductos = new HashMap<Long, String>();
-
-		URI[] cacheFiles = context.getCacheFiles();
-
-		if (cacheFiles != null && cacheFiles.length == 2) {
-			for (URI cacheFile : cacheFiles) {
-				boolean esLocales = cacheFile.getPath().contains("locales");
-				try {
-					String line = "";
-
-					FileSystem fs = FileSystem.get(context.getConfiguration());
-					Path getFilePath = new Path(cacheFile.toString());
-
-					BufferedReader reader = new BufferedReader(new InputStreamReader(fs.open(getFilePath)));
-
-					while ((line = reader.readLine()) != null) {
-						if (esLocales) {
-							localesParser.parse(line);
-							System.out.println(line);
-
-							baseLocales.put(localesParser.clave, localesParser.departamento);
-						} else {
-							productosParser.parse(line);
-							System.out.println(line);
-
-							baseProductos.put(productosParser.clave, productosParser.categoria);
-						}
-					}
-				} catch (NumberFormatException e) {
-					System.err.println(e);
-				} catch (Exception e) {
-					throw new IOException("No se pudo leer el archivo de cache.");
-				}
-			}
-		} else {
-			throw new IOException("Archivo chache no se cargó.");
-		}
+class IdentityMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, KEYIN, VALUEIN> {
+	public void map(KEYIN key, VALUEIN value, Context context) throws IOException, InterruptedException {
+		context.write(key, value);
 	}
 }
 
-class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text, Text> {
+class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Text> {
 	private VentasParser ventasParser = new VentasParser();
 
 	@Override
@@ -298,10 +200,10 @@ class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text,
 			ventasParser.parse(value);
 
 			long prod = ventasParser.clave_producto;
-			String categoria = baseProductos.get(prod);
+			String categoria = cacheHdfs.baseProductos.get(prod);
 
 			long local = ventasParser.clave_local;
-			String departamento = baseLocales.get(local);
+			String departamento = cacheHdfs.baseLocales.get(local);
 
 			// FILTRADO DE CATEGORIAS
 			if (categoria == null || categoria.equals("CENSURADO"))
@@ -331,17 +233,9 @@ class HdfsHashJoinMapper extends LectorCacheHdfsMapper<LongWritable, Text, Text,
 			System.err.println(e);
 		}
 	}
-
 }
 
-public class MainDriver extends Configured implements Tool {
-	static final Class<? extends Mapper> job_map_class = HdfsHashJoinMapper.class;
-	static final Class<? extends Reducer> job_combine_class = null;
-	static final Class<? extends Reducer> job_reduce_class = SegmentedRegression.SegmentedRegressionReducer.class;
-
-	static final Class<? extends Writable> out_key_class = Text.class;
-	static final Class<? extends Writable> out_value_class = Text.class;
-
+class BaseDriver extends Configured implements Tool {
 	public int run(String[] args) throws Exception {
 		if (args.length != 2) {
 			System.err.printf("Uso: %s <input> <output>\n", getClass().getSimpleName());
@@ -349,44 +243,50 @@ public class MainDriver extends Configured implements Tool {
 			return -1;
 		}
 
-		Job job = Job.getInstance(getConf(), "HPC - Mosquitos");
-		job.setJarByClass(getClass());
+		Path prevTempPath = new Path("/tmp/"+args[1]);
+		
+		int lastCode = 0;
+		for (int i = 1; i <= getJobCount(); i++) {
+			Job job = Job.getInstance(getConf(), "HPC - Mosquitos - " + i);
+			job.setJarByClass(getClass());
+			Path newTempPath = new Path("/tmp/"+args[1]+i);
+			
+			if (i == 1) // Si es el primer job
+				FileInputFormat.addInputPath(job, new Path(args[0]));
+			else
+				FileInputFormat.addInputPath(job, prevTempPath);
+			
+			if (i == getJobCount()) // Si es el ultimo job
+				FileOutputFormat.setOutputPath(job, new Path(args[1]));
+			else
+				FileOutputFormat.setOutputPath(job, newTempPath);
 
-		FileInputFormat.addInputPath(job, new Path(args[0]));
-		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+			configureJob(job, i);
 
-		job.setMapperClass(job_map_class);
-		if (job_combine_class != null)
-			job.setCombinerClass(job_combine_class);
-		job.setReducerClass(job_reduce_class);
-
-		job.setOutputKeyClass(out_key_class);
-		job.setOutputValueClass(out_value_class);
-
-		preRun(job);
-
-		return job.waitForCompletion(true) ? 0 : 1;
+			lastCode = job.waitForCompletion(true) ? 0 : 1;
+			prevTempPath = newTempPath;
+		}
+		return lastCode;
 	}
 
-	void preRun(Job job) {
-		try {
-			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/locales.csv"));
-		} catch (Exception e) {
-			System.out.println("Archivo de locales no se agregó al caché distribuido");
-			System.exit(1);
-		}
-
-		try {
-			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/productos.csv"));
-		} catch (Exception e) {
-			System.out.println("Archivo de productos no se agregó al caché distribuido");
-			System.exit(1);
-		}
+	static int getJobCount() {
+		return 1;
 	}
 
-	public static void main(String[] args) throws Exception {
-		int exitCode = ToolRunner.run(new MainDriver(), args);
-		System.exit(exitCode);
+	public void configureJob(Job job, int i) throws Exception {
+		// USAR PARA SETEAR MAPPERS, REDUCERS, ETC
+	}
+}
+
+public class MainDriver extends CacheHdfs.CDriver {
+	@Override
+	public void configureJob(Job job, int i) {
+		job.setMapperClass(HdfsHashJoinMapper.class);
+		// job.setCombinerClass(job_combine_class);
+		job.setReducerClass(SegmentedRegressionReducer.class);
+
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
 	}
 
 }
