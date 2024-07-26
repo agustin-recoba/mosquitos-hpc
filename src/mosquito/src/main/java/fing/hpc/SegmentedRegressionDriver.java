@@ -9,17 +9,18 @@ import java.util.Date;
 import java.util.List;
 
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.util.ToolRunner;
 
-class SegmentedRegressionReducer extends Reducer<Text, Text, Text, Text> {
+class SegmentedRegressionReducer extends Reducer<Text, Text, Text, TextArrayWritable> {
 	@Override
 	public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
 		// Convertimos en DataPoints
 		List<DataPoint> dataPoints = new ArrayList<>();
 		for (Text k_v : values) {
-			ParText vars = new ParText(k_v);
+			ValuePair vars = new ValuePair(k_v);
 			try {
 				dataPoints.add(new DataPoint(vars.x, Float.parseFloat(vars.y)));
 			} catch (ParseException e) {
@@ -37,33 +38,46 @@ class SegmentedRegressionReducer extends Reducer<Text, Text, Text, Text> {
 		});
 
 		// Invocamos la detección de puntos de cambio
-		List<String> changePoints = MathPart.detectChangepoints(dataPoints);
+		List<String> changePoints = CoreSegementedRegression.detectChangepoints(dataPoints);
 
-		context.write(key, new Text(changePoints.toString()));
+		Text[] changePointsArray = new Text[changePoints.size()];
+		for (int i = 0; i < changePoints.size(); i++) {
+			changePointsArray[i] = new Text(changePoints.get(i));
+		}
+
+		context.write(key, new TextArrayWritable(changePointsArray));
 	}
 }
 
 public class SegmentedRegressionDriver extends CacheHdfs.CDriver {
+	static int jobCount = 2;
 
 	@Override
 	public void configureJob(Job job, int i) throws Exception {
 		super.configureJob(job, i);
+		job.setJarByClass(SegmentedRegressionDriver.class);
+
 		if (i == 1) {
 			job.setMapperClass(HdfsHashJoinMapper.class);
 			// job.setCombinerClass(job_combine_class);
-			job.setReducerClass(GroupBy.GroupByAvgReducer.class);
+			job.setReducerClass(GroupByReducer.Average.class);
 
-			job.setOutputKeyClass(Text.class);
-			job.setOutputValueClass(Text.class);
+			job.setOutputKeyClass(Text.class); // Escribe clave
+			job.setOutputValueClass(Text.class); // Escribe fecha y Average(valor)
+			job.getConfiguration().set("mapreduce.output.textoutputformat.separator", ";");
 		} else if (i == 2) {
-			job.setJarByClass(SegmentedRegressionDriver.class);
+			job.getConfiguration().set("mapreduce.input.keyvaluelinerecordreader.key.value.separator", ";");
+
+			job.setInputFormatClass(KeyValueTextInputFormat.class);
 
 			job.setMapperClass(IdentityMapper.class);
+			job.setMapOutputKeyClass(Text.class);
+			job.setMapOutputValueClass(Text.class);
 			// job.setCombinerClass(job_combine_class);
 			job.setReducerClass(SegmentedRegressionReducer.class);
 
 			job.setOutputKeyClass(Text.class);
-			job.setOutputValueClass(Text.class);
+			job.setOutputValueClass(TextArrayWritable.class);
 		}
 	}
 
@@ -73,7 +87,7 @@ public class SegmentedRegressionDriver extends CacheHdfs.CDriver {
 	}
 }
 
-class MathPart {
+class CoreSegementedRegression {
 	public static List<String> detectChangepoints(List<DataPoint> orderedData) {
 		List<String> changepoints = new ArrayList<>();
 		int n = orderedData.size();

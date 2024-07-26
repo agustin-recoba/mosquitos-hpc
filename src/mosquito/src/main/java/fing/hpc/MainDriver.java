@@ -12,14 +12,12 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 
-
-
 class DataPoint {
 	Date date;
-	float value;
+	double value;
 	static final SimpleDateFormat formater = new SimpleDateFormat("yyyy-MM-dd");
 
-	public DataPoint(String dateStr, float value) throws ParseException {
+	public DataPoint(String dateStr, double value) throws ParseException {
 
 		this.date = formater.parse(dateStr);
 		this.value = value;
@@ -39,20 +37,20 @@ class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> 
 	}
 }
 
-class ParText {
+class ValuePair {
 	public Text text;
 
 	public String x;
 	public String y;
 
-	public ParText(String x, String y) {
+	public ValuePair(String x, String y) {
 		this.x = x;
 		this.y = y;
 
 		this.text = new Text(this.x + "\t" + this.y);
 	}
 
-	public ParText(Text text) {
+	public ValuePair(Text text) {
 		this.text = text;
 
 		String[] items = text.toString().split("\t");
@@ -61,7 +59,7 @@ class ParText {
 	}
 }
 
-class Clave {
+class CustomKey {
 	public Text text;
 
 	public String categoria;
@@ -74,7 +72,7 @@ class Clave {
 	private static final String NULL_D = "2000-01-01";
 	private static final short NULL_I = -1;
 
-	public Clave(String categoria, String departamento, String fecha, long codigoProd, long codigoLocal) {
+	public CustomKey(String categoria, String departamento, String fecha, long codigoProd, long codigoLocal) {
 		this.categoria = categoria;
 		this.departemento = departamento;
 		this.fecha = fecha;
@@ -85,23 +83,23 @@ class Clave {
 				+ "\t" + this.codigoLocal);
 	}
 
-	public Clave(String categoria, String departamento, String fecha) {
+	public CustomKey(String categoria, String departamento, String fecha) {
 		this(categoria, departamento, fecha, NULL_I, NULL_I);
 	}
 
-	public Clave(String categoria, String fecha) {
+	public CustomKey(String categoria, String fecha) {
 		this(categoria, NULL_S, fecha, NULL_I, NULL_I);
 	}
 
-	public Clave(String categoria, String fecha, long codigoProd) {
+	public CustomKey(String categoria, String fecha, long codigoProd) {
 		this(categoria, NULL_S, fecha, codigoProd, NULL_I);
 	}
 
-	public Clave(String categoria) {
+	public CustomKey(String categoria) {
 		this(categoria, NULL_S, NULL_D, NULL_I, NULL_I);
 	}
 
-	public Clave(Text text) {
+	public CustomKey(Text text) {
 		this.text = text;
 
 		String[] items = text.toString().split("\t");
@@ -152,8 +150,14 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
 			// new FloatWritable(ventasParser.cant_vta_original)
 
 			// ELECCION DE CLAVE
-			context.write(new Clave(categoria, ventasParser.fecha.substring(0, 4), ventasParser.clave_producto).text,
-					new ParText(ventasParser.fecha, Float.toString(ventasParser.precio_unitario)).text);
+			context.write(
+					new CustomKey(
+							categoria,
+							ventasParser.fecha.substring(0, 4),
+							ventasParser.clave_producto).text, // Cat, año y producto
+					new ValuePair(
+							ventasParser.fecha,
+							Float.toString(ventasParser.precio_unitario)).text);
 
 		} catch (NumberFormatException e) {
 			System.err.println(e);
