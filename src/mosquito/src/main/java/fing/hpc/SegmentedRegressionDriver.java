@@ -1,84 +1,25 @@
 package fing.hpc;
 
 import java.io.IOException;
-import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
-import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.util.ToolRunner;
 
-class SegmentedRegressionReducer extends Reducer<Text, Text, Text, TextArrayWritable> {
+class SegmentedRegressionReducer extends ChangePointDetectionReducer {
+
 	@Override
-	public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-		// Convertimos en DataPoints
-		List<DataPoint> dataPoints = new ArrayList<>();
-		for (Text k_v : values) {
-			ValuePair vars = new ValuePair(k_v);
-			try {
-				dataPoints.add(new DataPoint(vars.x, Float.parseFloat(vars.y)));
-			} catch (ParseException e) {
-				// Nada
-			}
-		}
-
-		// Ordenamos por fecha
-		Collections.sort(dataPoints, new Comparator<DataPoint>() {
-			@Override
-			public int compare(DataPoint x1, DataPoint x2) {
-
-				return x1.date.compareTo(x2.date);
-			}
-		});
-
-		// Invocamos la detección de puntos de cambio
-		List<String> changePoints = CoreSegementedRegression.detectChangepoints(dataPoints);
-
-		Text[] changePointsArray = new Text[changePoints.size()];
-		for (int i = 0; i < changePoints.size(); i++) {
-			changePointsArray[i] = new Text(changePoints.get(i));
-		}
-
-		context.write(key, new TextArrayWritable(changePointsArray));
+	protected void setup(Context context) throws IOException, InterruptedException {
+		super.setup(context);
+		changePointDetectionAlgorithm = new CoreSegementedRegression();
 	}
 }
 
-public class SegmentedRegressionDriver extends CacheHdfs.CDriver {
-	static int jobCount = 2;
-
-	@Override
-	public void configureJob(Job job, int i) throws Exception {
-		super.configureJob(job, i);
-		job.setJarByClass(SegmentedRegressionDriver.class);
-
-		if (i == 1) {
-			job.setMapperClass(HdfsHashJoinMapper.class);
-			// job.setCombinerClass(job_combine_class);
-			job.setReducerClass(GroupByReducer.Average.class);
-
-			job.setOutputKeyClass(Text.class); // Escribe clave
-			job.setOutputValueClass(Text.class); // Escribe fecha y Average(valor)
-			job.getConfiguration().set("mapreduce.output.textoutputformat.separator", ";");
-		} else if (i == 2) {
-			job.getConfiguration().set("mapreduce.input.keyvaluelinerecordreader.key.value.separator", ";");
-
-			job.setInputFormatClass(KeyValueTextInputFormat.class);
-
-			job.setMapperClass(IdentityMapper.class);
-			job.setMapOutputKeyClass(Text.class);
-			job.setMapOutputValueClass(Text.class);
-			// job.setCombinerClass(job_combine_class);
-			job.setReducerClass(SegmentedRegressionReducer.class);
-
-			job.setOutputKeyClass(Text.class);
-			job.setOutputValueClass(TextArrayWritable.class);
-		}
+public class SegmentedRegressionDriver extends ChangePointDetectionDriver {
+	public SegmentedRegressionDriver() {
+		super();
+		changePointDetectionReducer = SegmentedRegressionReducer.class;
 	}
 
 	public static void main(String[] args) throws Exception {
@@ -87,14 +28,20 @@ public class SegmentedRegressionDriver extends CacheHdfs.CDriver {
 	}
 }
 
-class CoreSegementedRegression {
-	public static List<String> detectChangepoints(List<DataPoint> orderedData) {
-		List<String> changepoints = new ArrayList<>();
+class CoreSegementedRegression implements ChangePointDetectionAlgorithm {
+
+	@Override
+	public List<Date> detectChangePoints(List<DataPoint> orderedData) {
+		List<Date> changepoints = new ArrayList<>();
 		int n = orderedData.size();
 
 		for (int i = 1; i < n - 1; i++) {
 			List<DataPoint> leftSegment = orderedData.subList(0, i + 1);
 			List<DataPoint> rightSegment = orderedData.subList(i + 1, n);
+			// Chequeo que el ultimo punto de la izquierda no tenga el mismo timestamp que
+			// el primero de la derecha
+			if (leftSegment.get(leftSegment.size() - 1).date.equals(rightSegment.get(0).date))
+				continue;
 
 			double leftError = calculateSegmentError(leftSegment);
 			double rightError = calculateSegmentError(rightSegment);
@@ -104,7 +51,7 @@ class CoreSegementedRegression {
 
 			if (judgePoint(totalError, currentError)) {
 				Date resDate = orderedData.get(i).date;
-				changepoints.add(DataPoint.formater.format(resDate));
+				changepoints.add(resDate);
 			}
 		}
 
@@ -117,7 +64,7 @@ class CoreSegementedRegression {
 
 	private static double calculateSegmentError(List<DataPoint> segment) {
 		int n = segment.size();
-		if (n < 2)
+		if (n < Constants.MIN_DAYS_BETWEEN_CHANGE_POINTS)
 			return Float.POSITIVE_INFINITY;
 
 		double sumX = 0;

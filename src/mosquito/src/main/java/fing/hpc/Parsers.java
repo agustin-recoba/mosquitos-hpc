@@ -18,6 +18,7 @@ public class Parsers {
 			parse(record.toString());
 		}
 	}
+
 	public static class Locales {
 
 		public String departamento;
@@ -35,7 +36,7 @@ public class Parsers {
 		}
 	}
 
-	public  static class Ventas {
+	public static class Ventas {
 		public long clave_local;
 		public long clave_producto;
 		public String fecha;

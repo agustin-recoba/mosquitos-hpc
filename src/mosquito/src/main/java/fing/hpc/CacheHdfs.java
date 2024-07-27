@@ -15,7 +15,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 class CacheHdfs {
 
 	public HashMap<Long, String> baseLocales = new HashMap<Long, String>();
-	public HashMap<Long, String> baseProductos= new HashMap<Long, String>();
+	public HashMap<Long, String> baseProductos = new HashMap<Long, String>();
 
 	public Parsers.Locales localesParser = new Parsers.Locales();
 	public Parsers.Productos productosParser = new Parsers.Productos();
@@ -84,17 +84,16 @@ class CacheHdfs {
 			System.exit(1);
 		}
 	}
-	
-	public static class CDriver extends ExtensibleDriver {
+
+	public static class CDriver extends MultiJobDriver {
 
 		@Override
 		public void configureJob(Job job, int i) throws Exception {
-			if (i==1)
-				CacheHdfs.addCacheFiles(job);
+			CacheHdfs.addCacheFiles(job);
 		}
 
 	}
-	
+
 	public static class CMapper<INKEY, INVAL, OUTKEY, OUTVAL> extends Mapper<INKEY, INVAL, OUTKEY, OUTVAL> {
 		/*
 		 * MAPPER QUE PUEDE ACCEDER A LAS BASES DE PRODUCTOS O LOCALES DESDE EL CACHE

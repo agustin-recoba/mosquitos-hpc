@@ -8,6 +8,7 @@ import java.util.Date;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -63,23 +64,23 @@ class CustomKey {
 	public Text text;
 
 	public String categoria;
-	public String departemento;
+	public String departamento;
 	public String fecha;
 	public long codigoProd;
 	public long codigoLocal;
 
-	private static final String NULL_S = "NULL";
-	private static final String NULL_D = "2000-01-01";
-	private static final short NULL_I = -1;
+	public static final String NULL_S = "NULL";
+	public static final String NULL_D = "2000-01-01";
+	public static final short NULL_I = -1;
 
 	public CustomKey(String categoria, String departamento, String fecha, long codigoProd, long codigoLocal) {
 		this.categoria = categoria;
-		this.departemento = departamento;
+		this.departamento = departamento;
 		this.fecha = fecha;
 		this.codigoProd = codigoProd;
 		this.codigoLocal = codigoLocal;
 
-		this.text = new Text(this.categoria + "\t" + this.departemento + "\t" + this.fecha + "\t" + this.codigoProd
+		this.text = new Text(this.categoria + "\t" + this.departamento + "\t" + this.fecha + "\t" + this.codigoProd
 				+ "\t" + this.codigoLocal);
 	}
 
@@ -104,7 +105,7 @@ class CustomKey {
 
 		String[] items = text.toString().split("\t");
 		this.categoria = items[0];
-		this.departemento = items[1];
+		this.departamento = items[1];
 		this.fecha = items[2];
 		this.codigoProd = Integer.parseInt(items[3]);
 		this.codigoLocal = Integer.parseInt(items[4]);
@@ -166,13 +167,20 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
 }
 
 public class MainDriver extends CacheHdfs.CDriver {
+	int jobCount = 1;
+
 	@Override
 	public void configureJob(Job job, int i) {
 		job.setMapperClass(HdfsHashJoinMapper.class);
 		// job.setCombinerClass(job_combine_class);
-		job.setReducerClass(SegmentedRegressionReducer.class);
+		job.setReducerClass(GroupByReducer.SumAll.class);
 
 		job.setOutputKeyClass(Text.class);
 		job.setOutputValueClass(Text.class);
+	}
+
+	public static void main(String[] args) throws Exception {
+		int exitCode = ToolRunner.run(new MainDriver(), args);
+		System.exit(exitCode);
 	}
 }
