@@ -10,7 +10,6 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 
 class DataPoint {
@@ -118,59 +117,17 @@ class IdentityMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, KEYIN, VALUE
 	}
 }
 
-class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Text> {
-	Parsers.Ventas ventasParser = new Parsers.Ventas();
-
-	@Override
-	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-		try {
-			ventasParser.parse(value);
-
-			String categoria = cacheHdfs.baseProductos.get(ventasParser.clave_producto);
-
-			String departamento = cacheHdfs.baseLocales.get(ventasParser.clave_local);
-
-			// FILTRADO DE CATEGORIAS
-			if (categoria == null || categoria.equals("CENSURADO"))
-				return;
-
-			// FILTRADO DE DEPARTAMENTOS
-			if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
-				return;
-
-			// FILTRADO DE VENTAS (devoluciones, precios disparatados)
-			if (ventasParser.cant_vta_original < 0 || ventasParser.precio_unitario < 10
-					|| ventasParser.precio_unitario > 2000)
-				return;
-
-			// new LongWritable(ventasParser.clave_local)
-			// new LongWritable(ventasParser.clave_producto)
-			// new LongWritable(ventasParser.clave_venta)
-			// new FloatWritable(ventasParser.precio_unitario)
-			// new FloatWritable(ventasParser.cant_vta)
-			// new FloatWritable(ventasParser.cant_vta_original)
-
-			// ELECCION DE CLAVE
-			context.write(
-					new CustomKey(
-							categoria,
-							ventasParser.fecha.substring(0, 4),
-							ventasParser.clave_producto).text, // Cat, año y producto
-					new ValuePair(
-							ventasParser.fecha,
-							Float.toString(ventasParser.precio_unitario)).text);
-
-		} catch (NumberFormatException e) {
-			System.err.println(e);
-		}
-	}
-}
-
 public class MainDriver extends CacheHdfs.CDriver {
-	int jobCount = 1;
+
+	public MainDriver() {
+		super();
+		jobCount = 1;
+	}
 
 	@Override
-	public void configureJob(Job job, int i) {
+	public void configureJob(Job job, int i) throws Exception {
+		super.configureJob(job, i);
+		
 		job.setMapperClass(HdfsHashJoinMapper.class);
 		// job.setCombinerClass(job_combine_class);
 		job.setReducerClass(GroupByReducer.SumAll.class);

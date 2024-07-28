@@ -152,7 +152,7 @@ class ChangePointDetectionDriver extends CacheHdfs.CDriver {
 		job.setJarByClass(DistributedPELTDriver.class);
 
 		if (i == 1) {
-			super.configureJob(job, i);
+			super.configureJob(job, i); // join cache
 
 			job.setMapperClass(HdfsHashJoinMapper.class);
 			job.setMapOutputKeyClass(Text.class);
