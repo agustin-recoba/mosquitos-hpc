@@ -34,21 +34,13 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 
 	@Override
 	public List<Date> detectChangePoints(List<DataPoint> dataPoints) {
-		double[] dataPointsArray = new double[dataPoints.size()];
-		for (int i = 0; i < dataPoints.size(); i++) {
-			dataPointsArray[i] = dataPoints.get(i).value;
-		}
-
-		List<Date> result = new ArrayList<Date>();
 		try {
-			Integer[] changePoints = CorePELT.detectChangepoints(dataPointsArray);
-
-			for (int i = 0; i < changePoints.length; i++) {
-				result.add(dataPoints.get(changePoints[i]).date);
-			}
+			return detectChangepoints(dataPoints);
 		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return null; // ToDo
 		}
-		return result;
 	}
 
 	// Dado un array de valores `double`, detecta las ubicaciones de los puntos de
@@ -69,7 +61,16 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	// Los puntos de cambio corresponden al final de los segmentos detectados.
 	// Por ejemplo, los puntos de cambio para {0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
 	// 2, 2, 2, 2, 2, 2} son {5, 11}.
-	public static Integer[] detectChangepoints(double[] data) throws Exception {
+	public static List<Date> detectChangepoints(List<DataPoint> dataPoints) throws Exception {
+		// Ademas, no consideramos para el calculo los puntos que no representan un
+		// cambio en la fecha
+		// dataPoints.get(i).date.equals(dataPoints.get(i+1).date)
+
+		double[] data = new double[dataPoints.size()];
+		for (int i = 0; i < dataPoints.size(); i++) {
+			data[i] = dataPoints.get(i).value;
+		}
+
 		// `n` es la longitud de la serie de tiempo
 		int n = data.length;
 		int minDistanceBetweenChangepoint = Constants.MIN_DAYS_BETWEEN_CHANGE_POINTS;
@@ -77,7 +78,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Si la serie de tiempo es demasiado corta, no tiene sentido buscar puntos de
 		// cambio
 		if (n <= 2)
-			return new Integer[0];
+			return new ArrayList<Date>();
 		if (minDistanceBetweenChangepoint < 1 || minDistanceBetweenChangepoint > n)
 			throw new Exception("minDistance debería estar en el rango 1 .. data.length");
 
@@ -142,18 +143,25 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// que es el final del último segmento e intentamos encontrar el final del
 		// segmento anterior.
 		for (int currentTau = 2 * minDistanceBetweenChangepoint; currentTau < n + 1; currentTau++) {
-			// Para cada tar previo, debemos calcular el costo de tomar este tau como el
+			// Para cada tau previo, debemos calcular el costo de tomar este tau como el
 			// final del anterior segmento.
 			// El costo es la suma de tres partes:
 			// 1. El costo para el segmento anterior (el segmento que termina en
-			// `previousTau`)
+			// `previousTau`, almacenado en `bestCost[previousTau]`)
 			// 2. El costo por el nuevo segmento (de `previousTau` a `currentTau`)
 			// 3. La penalización por el nuevo punto de cambio.
 			costForPreviousTau.clear();
 
-			for (Integer previousTau : previousTaus)
-				costForPreviousTau.add(
-						bestCost[previousTau] + getSegmentCost(partialSums, previousTau, currentTau, k, n) + penalty);
+			for (Integer previousTau : previousTaus) {
+				if (dataPoints.get(currentTau).date.equals(dataPoints.get(currentTau + 1).date)) {
+					// Si la fecha es la misma, no se considera un cambio
+					costForPreviousTau.add(Double.MAX_VALUE);
+				} else {
+					costForPreviousTau.add(
+							bestCost[previousTau] + getSegmentCost(partialSums, previousTau, currentTau, k, n)
+									+ penalty);
+				}
+			}
 
 			// Ahora deberíamos elegir el tau que proporcione el costo mínimo posible.
 			int bestPreviousTauIndex = whichMin(costForPreviousTau);
@@ -186,7 +194,15 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 
 		Integer[] result = new Integer[changePointIndexes.size()];
 		changePointIndexes.toArray(result);
-		return result;
+
+		List<Date> changePoints = new ArrayList<Date>();
+		try {
+			for (int i = 0; i < result.length; i++) {
+				changePoints.add(dataPoints.get(result[i]).date);
+			}
+		} catch (Exception e) {
+		}
+		return changePoints;
 	}
 
 	private static int[][] getPartialSums(double[] data, int k) {
