@@ -32,6 +32,11 @@ public class DistributedPELTDriver extends ChangePointDetectionDriver {
 class CorePELT implements ChangePointDetectionAlgorithm {
 	// FUENTE: https://aakinshin.net/posts/edpelt/
 
+	public static void print(String s) {
+		System.out.println(s);
+		System.err.println(s);
+	}
+
 	@Override
 	public List<Date> detectChangePoints(List<DataPoint> dataPoints) throws IOException, InterruptedException {
 		return detectChangepoints(dataPoints);
@@ -59,6 +64,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Ademas, no consideramos para el calculo los puntos que no representan un
 		// cambio en la fecha
 		// dataPoints.get(i).date.equals(dataPoints.get(i+1).date)
+		print("Detectando puntos de cambio con " + dataPoints.size() + " puntos");
 
 		double[] data = new double[dataPoints.size()];
 		for (int i = 0; i < dataPoints.size(); i++) {
@@ -106,11 +112,13 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// `bestCost[i]` es el costo para el subarray `data[0..i-1]`.
 		// El indice `i` es 1-based, (`data[0]`..`data[n-1]` corresponden a
 		// `bestCost[1]`..`bestCost[n]`)
+		print("Calculando costos de segmentos inicial (0, tau]");
 		double[] bestCost = new double[n + 1];
 		bestCost[0] = -penalty;
 		for (int currentTau = minDistanceBetweenChangepoint; currentTau < 2
 				* minDistanceBetweenChangepoint && currentTau <= n; currentTau++)
 			bestCost[currentTau] = getSegmentCost(partialSums, 0, currentTau);
+		print("Fin del calculo de costos de segmentos inicial (0, tau]");
 
 		// `previousChangePointIndex` es un array de referencias a puntos de cambio
 		// anteriores. Nos permitirá reconstruir la lista de
@@ -136,6 +144,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Para cada `currentTau`, pretendemos
 		// que es el final del último segmento e intentamos encontrar el final del
 		// segmento anterior.
+		print("Comenzando iteración de prog. dinámica...");
 		for (int currentTau = 2 * minDistanceBetweenChangepoint; currentTau <= n; currentTau++) {
 			// Para cada tau previo, debemos calcular el costo de tomar este tau como el
 			// final del anterior segmento.
@@ -144,9 +153,11 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 			// `previousTau`, almacenado en `bestCost[previousTau]`)
 			// 2. El costo por el nuevo segmento (de `previousTau` a `currentTau`)
 			// 3. La penalización por el nuevo punto de cambio.
+			print("Paso prog. dinámica " + currentTau + "/" + n);
 			costForPreviousTau.clear();
 
 			for (Integer previousTau : previousTaus) {
+				print("Subpaso prog. dinámica " + previousTau + "/" + currentTau);
 				if (previousTau - 1 >= 0 && previousTau < dataPoints.size()
 						&& dataPoints.get(previousTau - 1).date.equals(dataPoints.get(previousTau).date)) {
 					// Si el punto de cambio anterior no representa un cambio en la fecha, lo
@@ -168,6 +179,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 			// encontrar la solución óptima.
 			double currentBestCost = bestCost[currentTau];
 			int newPreviousTausSize = 0;
+			print("Ejecutando paso de PRUNING...");
 			for (int i = 0; i < previousTaus.size(); i++)
 				if (costForPreviousTau.get(i) < currentBestCost + penalty)
 					// Si el i-ésimo tau es "bueno", lo mantenemos en la lista de "buenos" taus.
@@ -180,7 +192,9 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 			// `minDistance` del siguiente `currentTau`.
 			previousTaus.add(currentTau - (minDistanceBetweenChangepoint - 1));
 		}
+		print("Fin de la iteración de prog. dinámica");
 
+		print("Reconstruyendo lista de puntos de cambio...");
 		// Reconstruimos la lista de puntos de cambio.
 		ArrayList<Integer> changePointIndexes = new ArrayList<Integer>();
 		int currentIndex = previousChangePointIndex[n];
@@ -193,6 +207,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 				throw new IOException("Bucle infinito");
 			}
 		}
+		print("Fin de la reconstrucción de la lista de puntos de cambio");
 		Collections.reverse(changePointIndexes); // Invertimos la lista para que los índices estén en orden ascendente
 
 		Integer[] result = new Integer[changePointIndexes.size()];
@@ -206,6 +221,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	}
 
 	private static int[][] getPartialSums(double[] data, int k) {
+		print("Calculando sumas parciales con " + data.length + " puntos y " + k + " cuantiles");
 		int n = data.length;
 		int[][] partialSums = new int[k][n + 1];
 
@@ -230,6 +246,7 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 					partialSums[i][tau] += 1;
 			}
 		}
+		print("Sumas parciales calculadas");
 		return partialSums;
 	}
 

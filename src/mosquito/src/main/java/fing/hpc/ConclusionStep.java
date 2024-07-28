@@ -72,8 +72,16 @@ public class ConclusionStep {
 			StringBuilder sb = new StringBuilder();
 			String comilla = "\"";
 
+			List<Map.Entry<String, Integer>> list = new ArrayList<>(map.entrySet());
+			Collections.sort(list, new Comparator<Map.Entry<String, Integer>>() {
+				@Override
+				public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
+					return o2.getValue().compareTo(o1.getValue());
+				}
+			});
+
 			sb.append("{");
-			for (Map.Entry<String, Integer> entry : map.entrySet())
+			for (Map.Entry<String, Integer> entry : list)
 				sb.append(comilla + entry.getKey().trim() + comilla + ": " + entry.getValue() + ", ");
 
 			if (sb.length() > 1)

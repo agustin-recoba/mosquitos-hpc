@@ -87,6 +87,10 @@ class CustomKey {
 		this(categoria, departamento, fecha, NULL_I, NULL_I);
 	}
 
+	public CustomKey(String categoria, String departamento, String fecha, long codigoProd) {
+		this(categoria, departamento, fecha, codigoProd, NULL_I);
+	}
+
 	public CustomKey(String categoria, String fecha) {
 		this(categoria, NULL_S, fecha, NULL_I, NULL_I);
 	}
@@ -127,7 +131,7 @@ public class MainDriver extends CacheHdfs.CDriver {
 	@Override
 	public void configureJob(Job job, int i) throws Exception {
 		super.configureJob(job, i);
-		
+
 		job.setMapperClass(HdfsHashJoinMapper.class);
 		// job.setCombinerClass(job_combine_class);
 		job.setReducerClass(GroupByReducer.SumAll.class);

@@ -22,7 +22,7 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
                 return;
 
             // FILTRADO DE DEPARTAMENTOS
-            if (departamento == null || (!departamento.equals("MONTEVIDEO") && !departamento.equals("CANELONES")))
+            if (departamento == null)
                 return;
 
             // FILTRADO DE VENTAS (devoluciones, precios disparatados)
@@ -41,6 +41,7 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
             context.write(
                     new CustomKey(
                             categoria,
+                            departamento,
                             ventasParser.fecha.substring(0, 4),
                             ventasParser.clave_producto).text, // Cat, año y producto
                     new ValuePair(
