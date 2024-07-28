@@ -101,7 +101,7 @@ class TextArrayWritable extends ArrayWritable {
 }
 
 interface ChangePointDetectionAlgorithm {
-	abstract List<Date> detectChangePoints(List<DataPoint> dataPoints);
+	abstract List<Date> detectChangePoints(List<DataPoint> dataPoints) throws IOException, InterruptedException;
 }
 
 class ChangePointDetectionReducer extends Reducer<Text, Text, Text, TextArrayWritable> {
@@ -132,7 +132,7 @@ class ChangePointDetectionReducer extends Reducer<Text, Text, Text, TextArrayWri
 		List<Date> changePoints = changePointDetectionAlgorithm.detectChangePoints(dataPoints);
 		Text[] changePointsArray = new Text[changePoints.size()];
 		for (int i = 0; i < changePoints.size(); i++) {
-			changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)));
+			changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)).trim());
 		}
 
 		context.write(key, new TextArrayWritable(changePointsArray));

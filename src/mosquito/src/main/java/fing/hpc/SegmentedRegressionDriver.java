@@ -31,7 +31,7 @@ public class SegmentedRegressionDriver extends ChangePointDetectionDriver {
 class CoreSegementedRegression implements ChangePointDetectionAlgorithm {
 
 	@Override
-	public List<Date> detectChangePoints(List<DataPoint> orderedData) {
+	public List<Date> detectChangePoints(List<DataPoint> orderedData) throws IOException, InterruptedException {
 		List<Date> changepoints = new ArrayList<>();
 		int n = orderedData.size();
 

@@ -1,7 +1,11 @@
 package fing.hpc;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.io.Text;
@@ -49,8 +53,8 @@ public class ConclusionStep {
 			Map<String, Integer> changePointsOcurrences = new HashMap<>();
 			for (TextArrayWritable changePoints : values) {
 				for (Text changePoint : changePoints.get()) {
-					String point = changePoint.toString();
-					if (point == null || point.trim().isEmpty())
+					String point = changePoint.toString().trim();
+					if (point == null || point.isEmpty())
 						continue;
 
 					if (changePointsOcurrences.containsKey(point)) {
