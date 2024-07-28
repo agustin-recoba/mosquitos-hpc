@@ -7,8 +7,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
 
 import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 
@@ -33,7 +31,7 @@ class MultiJobDriver extends Configured implements Tool {
 			ToolRunner.printGenericCommandUsage(System.err);
 			return -1;
 		}
-		System.out.println("Job count for this task: " + jobCount);
+		System.out.println("Cantidad de jobs a ejecutar: " + jobCount);
 
 		Path prevTempPath = new Path(args[0]);
 
@@ -152,19 +150,17 @@ class ChangePointDetectionReducer extends Reducer<Text, Text, Text, TextArrayWri
 			Text[] changePointsArray = new Text[1];
 			changePointsArray[0] = new Text("Timeout");
 			context.write(key, new TextArrayWritable(changePointsArray));
-		} else {
+		} else if (!changePoints.isEmpty()) {
 			Text[] changePointsArray = new Text[changePoints.size()];
 			for (int i = 0; i < changePoints.size(); i++) {
 				changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)).trim());
 			}
-
 			context.write(key, new TextArrayWritable(changePointsArray));
 		}
 	}
 
 	public static void print(String s) {
 		System.out.println(s);
-		System.err.println(s);
 	}
 }
 
@@ -180,7 +176,7 @@ class RunnableAlgo implements Runnable {
 
 	@Override
 	public void run() {
-		System.out.println("Executed...");
+		System.out.println("Ejecutando...");
 		try {
 			changePoints = changePointDetectionAlgorithm.detectChangePoints(dataPoints);
 		} catch (IOException e) {

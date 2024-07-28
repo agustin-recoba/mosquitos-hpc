@@ -34,7 +34,6 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 
 	public static void print(String s) {
 		System.out.println(s);
-		System.err.println(s);
 	}
 
 	@Override
