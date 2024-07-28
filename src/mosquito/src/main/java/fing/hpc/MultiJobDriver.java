@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+
 import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 
 import org.apache.hadoop.conf.Configured;
@@ -30,7 +31,7 @@ class MultiJobDriver extends Configured implements Tool {
 			ToolRunner.printGenericCommandUsage(System.err);
 			return -1;
 		}
-		System.out.println("Job count for this task: " + jobCount);
+		System.out.println("Cantidad de jobs a ejecutar: " + jobCount);
 
 		Path prevTempPath = new Path(args[0]);
 
@@ -50,6 +51,8 @@ class MultiJobDriver extends Configured implements Tool {
 			}
 			FileOutputFormat.setOutputPath(job, output);
 			System.out.println("Output " + i + ": " + output.toString());
+
+			job.setNumReduceTasks(8); // usar 2 * nodos
 
 			configureJob(job, i);
 
@@ -101,7 +104,7 @@ class TextArrayWritable extends ArrayWritable {
 }
 
 interface ChangePointDetectionAlgorithm {
-	abstract List<Date> detectChangePoints(List<DataPoint> dataPoints);
+	abstract List<Date> detectChangePoints(List<DataPoint> dataPoints) throws IOException, InterruptedException;
 }
 
 class ChangePointDetectionReducer extends Reducer<Text, Text, Text, TextArrayWritable> {
@@ -129,13 +132,60 @@ class ChangePointDetectionReducer extends Reducer<Text, Text, Text, TextArrayWri
 		});
 
 		// Invocamos la detección de puntos de cambio
-		List<Date> changePoints = changePointDetectionAlgorithm.detectChangePoints(dataPoints);
-		Text[] changePointsArray = new Text[changePoints.size()];
-		for (int i = 0; i < changePoints.size(); i++) {
-			changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)));
+		print("Invocando algoritmo de detección de puntos de cambio para la clave '" + key.toString() + "'.");
+
+		RunnableAlgo timeredRun = new RunnableAlgo(dataPoints, changePointDetectionAlgorithm);
+		Thread t = new Thread(timeredRun);
+		t.setDaemon(true);
+		t.start();
+		try {
+			t.join(Constants.MAX_SECONDS_CHANGEPOINT_EXECUTION * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
 
-		context.write(key, new TextArrayWritable(changePointsArray));
+		List<Date> changePoints = timeredRun.changePoints;
+		print("Fin del algoritmo de detección de puntos de cambio para la clave '" + key.toString() + "'.");
+
+		if (changePoints == null) {
+			print("Timeout en el algoritmo");
+			Text[] changePointsArray = new Text[1];
+			changePointsArray[0] = new Text("Timeout");
+			context.write(key, new TextArrayWritable(changePointsArray));
+		} else if (!changePoints.isEmpty()) {
+			Text[] changePointsArray = new Text[changePoints.size()];
+			for (int i = 0; i < changePoints.size(); i++) {
+				changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)).trim());
+			}
+			context.write(key, new TextArrayWritable(changePointsArray));
+		}
+	}
+
+	public static void print(String s) {
+		System.out.println(s);
+	}
+}
+
+class RunnableAlgo implements Runnable {
+	List<DataPoint> dataPoints = null;
+	List<Date> changePoints = null;
+	ChangePointDetectionAlgorithm changePointDetectionAlgorithm = null;
+
+	public RunnableAlgo(List<DataPoint> dataPoints, ChangePointDetectionAlgorithm changePointDetectionAlgorithm) {
+		this.dataPoints = dataPoints;
+		this.changePointDetectionAlgorithm = changePointDetectionAlgorithm;
+	}
+
+	@Override
+	public void run() {
+		System.out.println("Ejecutando...");
+		try {
+			changePoints = changePointDetectionAlgorithm.detectChangePoints(dataPoints);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 	}
 }
 
@@ -175,6 +225,7 @@ class ChangePointDetectionDriver extends CacheHdfs.CDriver {
 
 			// job.setCombinerClass(job_combine_class);
 			job.setReducerClass(ConclusionStep.R.class);
+			job.setNumReduceTasks(1); // Solo un reducer, para que solo haya un archivo de salida
 
 			job.setOutputKeyClass(Text.class);
 			job.setOutputValueClass(Text.class);

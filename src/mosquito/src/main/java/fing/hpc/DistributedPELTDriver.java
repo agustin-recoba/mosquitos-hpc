@@ -18,6 +18,7 @@ class DistributedPELTReducer extends ChangePointDetectionReducer {
 }
 
 public class DistributedPELTDriver extends ChangePointDetectionDriver {
+
 	public DistributedPELTDriver() {
 		super();
 		changePointDetectionReducer = DistributedPELTReducer.class;
@@ -33,22 +34,8 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	// FUENTE: https://aakinshin.net/posts/edpelt/
 
 	@Override
-	public List<Date> detectChangePoints(List<DataPoint> dataPoints) {
-		double[] dataPointsArray = new double[dataPoints.size()];
-		for (int i = 0; i < dataPoints.size(); i++) {
-			dataPointsArray[i] = dataPoints.get(i).value;
-		}
-
-		List<Date> result = new ArrayList<Date>();
-		try {
-			Integer[] changePoints = CorePELT.detectChangepoints(dataPointsArray);
-
-			for (int i = 0; i < changePoints.length; i++) {
-				result.add(dataPoints.get(changePoints[i]).date);
-			}
-		} catch (Exception e) {
-		}
-		return result;
+	public List<Date> detectChangePoints(List<DataPoint> dataPoints) throws IOException, InterruptedException {
+		return detectChangepoints(dataPoints);
 	}
 
 	// Dado un array de valores `double`, detecta las ubicaciones de los puntos de
@@ -69,7 +56,16 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	// Los puntos de cambio corresponden al final de los segmentos detectados.
 	// Por ejemplo, los puntos de cambio para {0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
 	// 2, 2, 2, 2, 2, 2} son {5, 11}.
-	public static Integer[] detectChangepoints(double[] data) throws Exception {
+	public static List<Date> detectChangepoints(List<DataPoint> dataPoints) throws IOException {
+		// Ademas, no consideramos para el calculo los puntos que no representan un
+		// cambio en la fecha
+		// dataPoints.get(i).date.equals(dataPoints.get(i+1).date)
+
+		double[] data = new double[dataPoints.size()];
+		for (int i = 0; i < dataPoints.size(); i++) {
+			data[i] = dataPoints.get(i).value;
+		}
+
 		// `n` es la longitud de la serie de tiempo
 		int n = data.length;
 		int minDistanceBetweenChangepoint = Constants.MIN_DAYS_BETWEEN_CHANGE_POINTS;
@@ -77,9 +73,9 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Si la serie de tiempo es demasiado corta, no tiene sentido buscar puntos de
 		// cambio
 		if (n <= 2)
-			return new Integer[0];
+			return new ArrayList<Date>();
 		if (minDistanceBetweenChangepoint < 1 || minDistanceBetweenChangepoint > n)
-			throw new Exception("minDistance debería estar en el rango 1 .. data.length");
+			throw new IOException("minDistance debería estar en el rango 1 .. data.length");
 
 		// Penalty es un valor constante que se agrega al costo final por cada punto de
 		// cambio adicional. Aquí usamos el Criterio de Información Bayesiano
@@ -114,8 +110,8 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		double[] bestCost = new double[n + 1];
 		bestCost[0] = -penalty;
 		for (int currentTau = minDistanceBetweenChangepoint; currentTau < 2
-				* minDistanceBetweenChangepoint; currentTau++)
-			bestCost[currentTau] = getSegmentCost(partialSums, 0, currentTau, k, n);
+				* minDistanceBetweenChangepoint && currentTau <= n; currentTau++)
+			bestCost[currentTau] = getSegmentCost(partialSums, 0, currentTau);
 
 		// `previousChangePointIndex` es un array de referencias a puntos de cambio
 		// anteriores. Nos permitirá reconstruir la lista de
@@ -141,19 +137,28 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Para cada `currentTau`, pretendemos
 		// que es el final del último segmento e intentamos encontrar el final del
 		// segmento anterior.
-		for (int currentTau = 2 * minDistanceBetweenChangepoint; currentTau < n + 1; currentTau++) {
-			// Para cada tar previo, debemos calcular el costo de tomar este tau como el
+		for (int currentTau = 2 * minDistanceBetweenChangepoint; currentTau <= n; currentTau++) {
+			// Para cada tau previo, debemos calcular el costo de tomar este tau como el
 			// final del anterior segmento.
 			// El costo es la suma de tres partes:
 			// 1. El costo para el segmento anterior (el segmento que termina en
-			// `previousTau`)
+			// `previousTau`, almacenado en `bestCost[previousTau]`)
 			// 2. El costo por el nuevo segmento (de `previousTau` a `currentTau`)
 			// 3. La penalización por el nuevo punto de cambio.
 			costForPreviousTau.clear();
 
-			for (Integer previousTau : previousTaus)
-				costForPreviousTau.add(
-						bestCost[previousTau] + getSegmentCost(partialSums, previousTau, currentTau, k, n) + penalty);
+			for (Integer previousTau : previousTaus) {
+				if (previousTau - 1 >= 0 && previousTau < dataPoints.size()
+						&& dataPoints.get(previousTau - 1).date.equals(dataPoints.get(previousTau).date)) {
+					// Si el punto de cambio anterior no representa un cambio en la fecha, lo
+					// ignoramos.
+					costForPreviousTau.add(Double.MAX_VALUE);
+				} else {
+					costForPreviousTau.add(
+							bestCost[previousTau] + getSegmentCost(partialSums, previousTau, currentTau)
+									+ penalty);
+				}
+			}
 
 			// Ahora deberíamos elegir el tau que proporcione el costo mínimo posible.
 			int bestPreviousTauIndex = whichMin(costForPreviousTau);
@@ -166,7 +171,9 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 			int newPreviousTausSize = 0;
 			for (int i = 0; i < previousTaus.size(); i++)
 				if (costForPreviousTau.get(i) < currentBestCost + penalty)
+					// Si el i-ésimo tau es "bueno", lo mantenemos en la lista de "buenos" taus.
 					previousTaus.set(newPreviousTausSize++, previousTaus.get(i));
+
 			if (newPreviousTausSize <= previousTaus.size() - newPreviousTausSize)
 				previousTaus.subList(newPreviousTausSize, previousTaus.size() - newPreviousTausSize).clear();
 
@@ -178,15 +185,25 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 		// Reconstruimos la lista de puntos de cambio.
 		ArrayList<Integer> changePointIndexes = new ArrayList<Integer>();
 		int currentIndex = previousChangePointIndex[n];
+		int whileCounter = 0;
 		while (currentIndex != 0) {
 			changePointIndexes.add(currentIndex - 1); // // Transformamos el índice basado en 1 a 0
 			currentIndex = previousChangePointIndex[currentIndex];
+			whileCounter++;
+			if (whileCounter > n) {
+				throw new IOException("Bucle infinito");
+			}
 		}
 		Collections.reverse(changePointIndexes); // Invertimos la lista para que los índices estén en orden ascendente
 
 		Integer[] result = new Integer[changePointIndexes.size()];
 		changePointIndexes.toArray(result);
-		return result;
+
+		List<Date> changePoints = new ArrayList<Date>();
+		for (int i = 0; i < result.length; i++) {
+			changePoints.add(dataPoints.get(result[i]).date);
+		}
+		return changePoints;
 	}
 
 	private static int[][] getPartialSums(double[] data, int k) {
@@ -218,7 +235,10 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	}
 
 	// Calcula el costo del segmento (tau1; tau2].
-	private static double getSegmentCost(int[][] partialSums, int tau1, int tau2, int k, int n) {
+	private static double getSegmentCost(int[][] partialSums, int tau1, int tau2) {
+		int k = partialSums.length;
+		int n = partialSums[0].length - 1;
+
 		double sum = 0;
 		for (int i = 0; i < k; i++) {
 			int actualSum = partialSums[i][tau2] - partialSums[i][tau1];
@@ -236,9 +256,9 @@ class CorePELT implements ChangePointDetectionAlgorithm {
 	// Retorna el índice del mínimo elemento en la lista de valores.
 	// En caso de que haya varios elementos mínimos en la lista dada, se devolverá
 	// el índice del primero.
-	private static int whichMin(List<Double> values) throws Exception {
+	private static int whichMin(List<Double> values) throws IOException {
 		if (values.size() == 0)
-			throw new Exception("Array no debería estar vacío");
+			throw new IOException("Array no debería estar vacío");
 
 		double minValue = values.get(0);
 		int minIndex = 0;

@@ -127,7 +127,7 @@ public class MainDriver extends CacheHdfs.CDriver {
 	@Override
 	public void configureJob(Job job, int i) throws Exception {
 		super.configureJob(job, i);
-		
+
 		job.setMapperClass(HdfsHashJoinMapper.class);
 		// job.setCombinerClass(job_combine_class);
 		job.setReducerClass(GroupByReducer.SumAll.class);

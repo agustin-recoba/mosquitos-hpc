@@ -1,7 +1,11 @@
 package fing.hpc;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.io.Text;
@@ -49,8 +53,8 @@ public class ConclusionStep {
 			Map<String, Integer> changePointsOcurrences = new HashMap<>();
 			for (TextArrayWritable changePoints : values) {
 				for (Text changePoint : changePoints.get()) {
-					String point = changePoint.toString();
-					if (point == null || point.trim().isEmpty())
+					String point = changePoint.toString().trim();
+					if (point == null || point.isEmpty())
 						continue;
 
 					if (changePointsOcurrences.containsKey(point)) {
@@ -68,8 +72,16 @@ public class ConclusionStep {
 			StringBuilder sb = new StringBuilder();
 			String comilla = "\"";
 
+			List<Map.Entry<String, Integer>> list = new ArrayList<>(map.entrySet());
+			Collections.sort(list, new Comparator<Map.Entry<String, Integer>>() {
+				@Override
+				public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
+					return o2.getValue().compareTo(o1.getValue());
+				}
+			});
+
 			sb.append("{");
-			for (Map.Entry<String, Integer> entry : map.entrySet())
+			for (Map.Entry<String, Integer> entry : list)
 				sb.append(comilla + entry.getKey().trim() + comilla + ": " + entry.getValue() + ", ");
 
 			if (sb.length() > 1)
