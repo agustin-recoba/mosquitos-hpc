@@ -7,7 +7,7 @@ import java.util.List;
 
 import org.apache.hadoop.util.ToolRunner;
 
-class SegmentedRegressionReducer extends ChangePointDetectionReducer {
+class SegmentedRegressionReducer extends ChangePointDetection.CPReducer {
 
 	@Override
 	protected void setup(Context context) throws IOException, InterruptedException {
@@ -16,7 +16,7 @@ class SegmentedRegressionReducer extends ChangePointDetectionReducer {
 	}
 }
 
-public class SegmentedRegressionDriver extends ChangePointDetectionDriver {
+public class SegmentedRegressionDriver extends ChangePointDetection.CPDriver {
 	public SegmentedRegressionDriver() {
 		super();
 		changePointDetectionReducer = SegmentedRegressionReducer.class;
@@ -28,7 +28,7 @@ public class SegmentedRegressionDriver extends ChangePointDetectionDriver {
 	}
 }
 
-class CoreSegementedRegression implements ChangePointDetectionAlgorithm {
+class CoreSegementedRegression implements ChangePointDetection.CPAlgorithm {
 
 	@Override
 	public List<Date> detectChangePoints(List<DataPoint> orderedData) throws IOException, InterruptedException {

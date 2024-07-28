@@ -8,7 +8,7 @@ import java.util.List;
 
 import org.apache.hadoop.util.ToolRunner;
 
-class DistributedPELTReducer extends ChangePointDetectionReducer {
+class DistributedPELTReducer extends ChangePointDetection.CPReducer {
 
 	@Override
 	protected void setup(Context context) throws IOException, InterruptedException {
@@ -17,20 +17,20 @@ class DistributedPELTReducer extends ChangePointDetectionReducer {
 	}
 }
 
-public class DistributedPELTDriver extends ChangePointDetectionDriver {
+public class SimplePELTDriver extends ChangePointDetection.CPDriver {
 
-	public DistributedPELTDriver() {
+	public SimplePELTDriver() {
 		super();
 		changePointDetectionReducer = DistributedPELTReducer.class;
 	}
 
 	public static void main(String[] args) throws Exception {
-		int exitCode = ToolRunner.run(new DistributedPELTDriver(), args);
+		int exitCode = ToolRunner.run(new SimplePELTDriver(), args);
 		System.exit(exitCode);
 	}
 }
 
-class CorePELT implements ChangePointDetectionAlgorithm {
+class CorePELT implements ChangePointDetection.CPAlgorithm {
 	// FUENTE: https://aakinshin.net/posts/edpelt/
 
 	@Override
