@@ -13,14 +13,14 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 
-class ChangePointDetection {
+class ChangePointDetectionExtensible {
 
-    static interface CPAlgorithm {
+    static interface CPAlgorithmIface {
         abstract List<Date> detectChangePoints(List<DataPoint> dataPoints) throws IOException, InterruptedException;
     }
 
     static class CPReducer extends Reducer<Text, Text, Text, TextArrayWritable> {
-        public CPAlgorithm changePointDetectionAlgorithm = null;
+        public CPAlgorithmIface changePointDetectionAlgorithm = null;
 
         @Override
         public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
@@ -81,9 +81,9 @@ class ChangePointDetection {
     static class RunnableAlgo implements Runnable {
         List<DataPoint> dataPoints = null;
         List<Date> changePoints = null;
-        CPAlgorithm changePointDetectionAlgorithm = null;
+        CPAlgorithmIface changePointDetectionAlgorithm = null;
 
-        public RunnableAlgo(List<DataPoint> dataPoints, CPAlgorithm changePointDetectionAlgorithm) {
+        public RunnableAlgo(List<DataPoint> dataPoints, CPAlgorithmIface changePointDetectionAlgorithm) {
             this.dataPoints = dataPoints;
             this.changePointDetectionAlgorithm = changePointDetectionAlgorithm;
         }

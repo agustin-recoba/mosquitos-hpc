@@ -7,7 +7,7 @@ import java.util.List;
 
 import org.apache.hadoop.util.ToolRunner;
 
-class SegmentedRegressionReducer extends ChangePointDetection.CPReducer {
+class SegmentedRegressionReducer extends ChangePointDetectionExtensible.CPReducer {
 
 	@Override
 	protected void setup(Context context) throws IOException, InterruptedException {
@@ -16,7 +16,7 @@ class SegmentedRegressionReducer extends ChangePointDetection.CPReducer {
 	}
 }
 
-public class SegmentedRegressionDriver extends ChangePointDetection.CPDriver {
+public class SegmentedRegressionDriver extends ChangePointDetectionExtensible.CPDriver {
 	public SegmentedRegressionDriver() {
 		super();
 		changePointDetectionReducer = SegmentedRegressionReducer.class;
@@ -28,7 +28,7 @@ public class SegmentedRegressionDriver extends ChangePointDetection.CPDriver {
 	}
 }
 
-class CoreSegementedRegression implements ChangePointDetection.CPAlgorithm {
+class CoreSegementedRegression implements ChangePointDetectionExtensible.CPAlgorithmIface {
 
 	@Override
 	public List<Date> detectChangePoints(List<DataPoint> orderedData) throws IOException, InterruptedException {
@@ -59,7 +59,7 @@ class CoreSegementedRegression implements ChangePointDetection.CPAlgorithm {
 	}
 
 	private static boolean judgePoint(double segmentationError, double noSegmentationError) {
-		return segmentationError < 0.8 * noSegmentationError;
+		return segmentationError < 0.7 * noSegmentationError;
 	}
 
 	private static double calculateSegmentError(List<DataPoint> segment) {
