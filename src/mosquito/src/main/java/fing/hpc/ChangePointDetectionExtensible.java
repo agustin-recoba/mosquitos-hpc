@@ -65,11 +65,16 @@ class ChangePointDetectionExtensible {
                 changePointsArray[0] = new Text("Timeout");
                 context.write(key, new TextArrayWritable(changePointsArray));
             } else if (!changePoints.isEmpty()) {
+                print("Puntos de cambio detectados");
                 Text[] changePointsArray = new Text[changePoints.size()];
                 for (int i = 0; i < changePoints.size(); i++) {
                     changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)).trim());
                 }
                 context.write(key, new TextArrayWritable(changePointsArray));
+            } else {
+                print("Ningun punto detectado");
+                Text[] changePointsArray = new Text[1];
+                changePointsArray[0] = new Text("NoChangePoint");
             }
         }
 
