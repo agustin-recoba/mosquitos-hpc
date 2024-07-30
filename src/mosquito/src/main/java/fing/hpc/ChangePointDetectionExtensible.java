@@ -26,10 +26,11 @@ class ChangePointDetectionExtensible {
         public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
             // Convertimos en DataPoints
             List<DataPoint> dataPoints = new ArrayList<>();
+            List<Text> originalValues = new ArrayList<>();
             for (Text k_v : values) {
-                ValuePair vars = new ValuePair(k_v);
                 try {
-                    dataPoints.add(new DataPoint(vars.x, Float.parseFloat(vars.y)));
+                    dataPoints.add(new DataPoint(k_v));
+                    originalValues.add(k_v);
                 } catch (ParseException e) {
                     // Nada
                 }
@@ -63,19 +64,27 @@ class ChangePointDetectionExtensible {
                 print("Timeout en el algoritmo");
                 Text[] changePointsArray = new Text[1];
                 changePointsArray[0] = new Text("Timeout");
-                context.write(key, new TextArrayWritable(changePointsArray));
+                context.write(getNewKey(key), generateValuesOutput(originalValues, changePointsArray));
             } else if (!changePoints.isEmpty()) {
                 print("Puntos de cambio detectados");
                 Text[] changePointsArray = new Text[changePoints.size()];
                 for (int i = 0; i < changePoints.size(); i++) {
                     changePointsArray[i] = new Text(DataPoint.formater.format(changePoints.get(i)).trim());
                 }
-                context.write(key, new TextArrayWritable(changePointsArray));
+                context.write(getNewKey(key), generateValuesOutput(originalValues, changePointsArray));
             } else {
                 print("Ningun punto detectado");
                 Text[] changePointsArray = new Text[1];
                 changePointsArray[0] = new Text("NoChangePoint");
             }
+        }
+
+        public TextArrayWritable generateValuesOutput(Iterable<Text> values, Text[] changePointsArray) {
+            return new TextArrayWritable(changePointsArray);
+        }
+
+        public Text getNewKey(Text key) {
+            return key;
         }
 
         public static void print(String s) {
@@ -108,6 +117,7 @@ class ChangePointDetectionExtensible {
 
     static class CPDriver extends CacheHdfs.CDriver {
         public Class<? extends CPReducer> changePointDetectionReducer = null;
+        public Class<? extends HdfsHashJoinMapper> joinMapperClass = HdfsHashJoinMapper.class;
 
         public CPDriver() {
             super();
@@ -121,7 +131,7 @@ class ChangePointDetectionExtensible {
             if (i == 1) {
                 super.configureJob(job, i); // join cache
 
-                job.setMapperClass(HdfsHashJoinMapper.class);
+                job.setMapperClass(joinMapperClass);
                 job.setMapOutputKeyClass(Text.class);
                 job.setMapOutputValueClass(Text.class);
 

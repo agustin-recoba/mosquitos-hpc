@@ -5,11 +5,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
-import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.util.ToolRunner;
-import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 
 class DataPoint {
@@ -22,18 +18,11 @@ class DataPoint {
 		this.date = formater.parse(dateStr);
 		this.value = value;
 	}
-}
 
-class MaxFloatReducer extends Reducer<Text, FloatWritable, Text, FloatWritable> {
-	@Override
-	public void reduce(Text key, Iterable<FloatWritable> values, Context context)
-			throws IOException, InterruptedException {
-
-		float maxPrice = Float.MIN_VALUE;
-		for (FloatWritable valor : values) {
-			maxPrice = Math.max(maxPrice, valor.get());
-		}
-		context.write(key, new FloatWritable(maxPrice));
+	public DataPoint(Text v) throws ParseException {
+		ValuePair vars = new ValuePair(v);
+		this.date = formater.parse(vars.x);
+		this.value = Float.parseFloat(vars.y);
 	}
 }
 
@@ -95,6 +84,10 @@ class CustomKey {
 		this(categoria, NULL_S, fecha, codigoProd, NULL_I);
 	}
 
+	public CustomKey(String categoria, String fecha, long codigoProd, long codigoLocal) {
+		this(categoria, NULL_S, fecha, codigoProd, codigoLocal);
+	}
+
 	public CustomKey(String categoria) {
 		this(categoria, NULL_S, NULL_D, NULL_I, NULL_I);
 	}
@@ -117,27 +110,12 @@ class IdentityMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, KEYIN, VALUE
 	}
 }
 
-public class MainDriver extends CacheHdfs.CDriver {
-
-	public MainDriver() {
-		super();
-		jobCount = 1;
-	}
-
+class CatDepAnioHashJoinMapper extends HdfsHashJoinMapper {
 	@Override
-	public void configureJob(Job job, int i) throws Exception {
-		super.configureJob(job, i);
-
-		job.setMapperClass(HdfsHashJoinMapper.class);
-		// job.setCombinerClass(job_combine_class);
-		job.setReducerClass(GroupByReducer.SumAll.class);
-
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(Text.class);
-	}
-
-	public static void main(String[] args) throws Exception {
-		int exitCode = ToolRunner.run(new MainDriver(), args);
-		System.exit(exitCode);
+	public Text getResultKey() {
+		return new CustomKey( // Cat, año y departamento
+				cacheHdfs.baseProductos.get(ventasParser.clave_producto),
+				cacheHdfs.baseLocales.get(ventasParser.clave_local),
+				ventasParser.fecha.substring(0, 4)).text;
 	}
 }

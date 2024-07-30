@@ -38,7 +38,7 @@ class MultiJobDriver extends Configured implements Tool {
 			FileOutputFormat.setOutputPath(job, output);
 			System.out.println("Output " + i + ": " + output.toString());
 
-			job.setNumReduceTasks(8); // usar 2 * nodos
+			job.setNumReduceTasks(2 * Constants.QTY_NODES_IN_CLUSTER);
 
 			configureJob(job, i);
 

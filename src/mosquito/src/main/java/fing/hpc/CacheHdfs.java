@@ -35,9 +35,13 @@ class CacheHdfs {
 	}
 
 	public void read(URI[] cacheFiles, FileSystem fs) throws IOException {
-		if (cacheFiles != null && cacheFiles.length == 2) {
+		if (cacheFiles != null && cacheFiles.length >= 2) {
 			for (URI cacheFile : cacheFiles) {
 				boolean esLocales = cacheFile.getPath().contains("locales");
+				boolean esProductos = cacheFile.getPath().contains("productos");
+				if (!esLocales && !esProductos)
+					continue;
+
 				try {
 					String line = "";
 
@@ -51,7 +55,7 @@ class CacheHdfs {
 							System.out.println(line);
 
 							baseLocales.put(localesParser.clave, localesParser.departamento);
-						} else {
+						} else if (esProductos) {
 							productosParser.parse(line);
 							System.out.println(line);
 
@@ -61,24 +65,24 @@ class CacheHdfs {
 				} catch (NumberFormatException e) {
 					System.err.println(e);
 				} catch (Exception e) {
-					throw new IOException("No se pudo leer el archivo de cache.");
+					throw new IOException("No se pudo leer el archivo de cache. " + e.getMessage());
 				}
 			}
 		} else {
-			throw new IOException("Archivo chache no se cargó.");
+			throw new IOException("Archivo chache no se cargó. " + cacheFiles.length);
 		}
 	}
 
 	public static void addCacheFiles(Job job) {
 		try {
-			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/locales.csv"));
+			job.addCacheFile(new URI(Constants.HDFSMASTER + "/data/locales.csv"));
 		} catch (Exception e) {
 			System.out.println("Archivo de locales no se agregó al caché distribuido");
 			System.exit(1);
 		}
 
 		try {
-			job.addCacheFile(new URI("hdfs://hadoop-master:9000/data/productos.csv"));
+			job.addCacheFile(new URI(Constants.HDFSMASTER + "/data/productos.csv"));
 		} catch (Exception e) {
 			System.out.println("Archivo de productos no se agregó al caché distribuido");
 			System.exit(1);

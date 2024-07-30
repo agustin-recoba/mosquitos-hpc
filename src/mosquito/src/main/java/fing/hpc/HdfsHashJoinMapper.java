@@ -39,10 +39,7 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
 
             // ELECCION DE CLAVE
             context.write(
-                    new CustomKey(
-                            categoria,
-                            ventasParser.fecha.substring(0, 4),
-                            ventasParser.clave_producto).text, // Cat, año y producto
+                    getResultKey(),
                     new ValuePair(
                             ventasParser.fecha,
                             Float.toString(ventasParser.precio_unitario)).text);
@@ -50,5 +47,12 @@ class HdfsHashJoinMapper extends CacheHdfs.CMapper<LongWritable, Text, Text, Tex
         } catch (NumberFormatException e) {
             System.err.println(e);
         }
+    }
+
+    public Text getResultKey() {
+        return new CustomKey( // Cat, año y producto
+                cacheHdfs.baseProductos.get(ventasParser.clave_producto),
+                ventasParser.fecha.substring(0, 4),
+                ventasParser.clave_producto).text;
     }
 }
