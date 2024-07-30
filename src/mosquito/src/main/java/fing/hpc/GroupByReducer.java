@@ -1,6 +1,7 @@
 package fing.hpc;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -87,6 +88,23 @@ public class GroupByReducer {
 			for (Text t : values) {
 				ValuePair vars = new ValuePair(t);
 				sum += Float.parseFloat(vars.y);
+			}
+
+			context.write(key, new Text(sum.toString()));
+		}
+	}
+
+	public static class SumAll2 extends Reducer<Text, Text, Text, Text> {
+		@Override
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+
+			// Calculamos suma total por sub-clave
+			Float sum = 0.0f;
+			for (Text t : values) {
+				try {
+					sum += Float.parseFloat(t.toString());
+				} catch (NumberFormatException e) {
+				}
 			}
 
 			context.write(key, new Text(sum.toString()));

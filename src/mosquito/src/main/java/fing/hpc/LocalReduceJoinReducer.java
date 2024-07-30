@@ -24,8 +24,10 @@ public class LocalReduceJoinReducer extends Reducer<Text, Text, Text, Text> {
 
         for (String venta : ventas) {
             String[] parts = venta.split(";"); // CATEGORIA;CANT_VTA
-            context.write(new Text(parts[0] + "\t" + departamento), new Text(parts[1])); // (CATEGORIA, DEPARTAMENTO,
-                                                                                         // CANT_VTA)
+            context.write(new Text(parts[0] + "\t" + departamento + "\t" + parts[1]), new Text("NULL"));
+            // (CATEGORIA,
+            // DEPARTAMENTO,
+            // CANT_VTA)
         }
     }
 }

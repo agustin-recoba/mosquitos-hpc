@@ -5,6 +5,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
@@ -104,9 +105,10 @@ class CustomKey {
 	}
 }
 
-class IdentityMapper<KEYIN, VALUEIN> extends Mapper<KEYIN, VALUEIN, KEYIN, VALUEIN> {
-	public void map(KEYIN key, VALUEIN value, Context context) throws IOException, InterruptedException {
-		context.write(key, value);
+class IdentityMapper extends Mapper<LongWritable, Text, Text, Text> {
+	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		String[] items = value.toString().split("\t");
+		context.write(new Text(items[0] + "\t" + items[1]), new Text(items[2]));
 	}
 }
 

@@ -7,9 +7,9 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
 public class ReduceJoinMapper {
-    Parsers.Ventas ventasParser = new Parsers.Ventas();
 
     public static class LocalesMapper extends Mapper<LongWritable, Text, Text, Text> {
+        @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String record = value.toString();
             String[] parts = record.split(";");
@@ -23,6 +23,7 @@ public class ReduceJoinMapper {
     }
 
     public static class ProductosMapper extends Mapper<LongWritable, Text, Text, Text> {
+        @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String record = value.toString();
             String[] parts = record.split(";");
@@ -38,9 +39,13 @@ public class ReduceJoinMapper {
     public static class ProductoVentasMapper extends Mapper<LongWritable, Text, Text, Text> {
         Parsers.Ventas ventasParser = new Parsers.Ventas();
 
+        @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            ventasParser.parse(value);
-
+            try {
+                ventasParser.parse(value);
+            } catch (NumberFormatException e) {
+                return;
+            }
             // FILTRADO DE VENTAS (devoluciones, precios disparatados)
             if (ventasParser.cant_vta_original < 0 || ventasParser.precio_unitario < 10
                     || ventasParser.precio_unitario > 2000)
@@ -54,11 +59,13 @@ public class ReduceJoinMapper {
     }
 
     public static class LocalVentaMapper extends Mapper<LongWritable, Text, Text, Text> {
-        Parsers.Ventas ventasParser = new Parsers.Ventas();
-
-        public void map(Text codLocal, Text cat_cantVta, Context context) throws IOException, InterruptedException {
-            context.write(codLocal, new Text("venta:" + cat_cantVta.toString())); // (CODIGO_LOCAL, CATEGORIA;CANT_VTA)
-
+        // Parsers.Ventas ventasParser = new Parsers.Ventas();
+        @Override
+        public void map(LongWritable codLocal, Text codLocal_cat_cantVta, Context context)
+                throws IOException, InterruptedException {
+            // Parsear
+            String[] parts = codLocal_cat_cantVta.toString().split("\t");
+            context.write(new Text(parts[0]), new Text("venta:" + parts[1])); // (CODIGO_LOCAL, CATEGORIA;CANT_VTA)
         }
     }
 
