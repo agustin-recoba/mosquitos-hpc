@@ -7,32 +7,44 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
 public class ReduceJoinMapper {
+    
 
     public static class LocalesMapper extends Mapper<LongWritable, Text, Text, Text> {
+        Parsers.Locales localesParser = new Parsers.Locales();
+
         @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            String record = value.toString();
-            String[] parts = record.split(";");
+            try {
+                localesParser.parse(value);
+            } catch (NumberFormatException e) {
+                return;
+            }
 
             // FILTRADO DE DEPARTAMENTOS
-            if (parts[0] == null || (!parts[0].equals("MONTEVIDEO")) && (!parts[0].equals("CANELONES")))
+            if (localesParser.departamento == null || (!localesParser.departamento.equals("MONTEVIDEO")) && (!localesParser.departamento.equals("CANELONES")))
                 return;
 
-            context.write(new Text(parts[1]), new Text("local:" + parts[0])); // (CODIGO_LOCAL, DEPARTAMENTO)
+            context.write(new Text(Long.toString(localesParser.clave)), new Text("local:" + localesParser.departamento)); // (CODIGO_LOCAL, DEPARTAMENTO)
         }
     }
 
     public static class ProductosMapper extends Mapper<LongWritable, Text, Text, Text> {
+        Parsers.Productos productosParser = new Parsers.Productos();
+
         @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            String record = value.toString();
-            String[] parts = record.split(";");
+            try {
+                productosParser.parse(value);
+            } catch (NumberFormatException e) {
+                return;
+            }
 
             // FILTRADO DE CATEGORIAS
-            if (parts[0] == null || parts[0].equals("CENSURADO"))
+            if (productosParser.categoria == null || productosParser.categoria.equals("CENSURADO"))
                 return;
-
-            context.write(new Text(parts[1]), new Text("producto:" + parts[0])); // (CODIGO_PRODUCTO, CATEGORIA)
+            
+            
+            context.write(new Text(Long.toString(productosParser.clave)), new Text("producto:" + productosParser.categoria)); // (CODIGO_PRODUCTO, CATEGORIA)
         }
     }
 
