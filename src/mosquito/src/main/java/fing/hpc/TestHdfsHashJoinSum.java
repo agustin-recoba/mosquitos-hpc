@@ -4,7 +4,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.util.ToolRunner;
 
-class TestHdfsHashJoinSum extends CacheHdfs.CDriver {
+public class TestHdfsHashJoinSum extends CacheHdfs.CDriver {
 
     public TestHdfsHashJoinSum() {
         super();
