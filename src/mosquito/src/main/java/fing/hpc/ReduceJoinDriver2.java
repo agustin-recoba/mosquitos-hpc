@@ -12,15 +12,14 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.hadoop.conf.Configured;
 
 public class ReduceJoinDriver2 extends Configured implements Tool {
-    int jobCount = -1;
-
+	
     public int run(String[] args) throws Exception {
         if (args.length != 2) {
             System.err.printf("Uso: %s <input> <output>\n", getClass().getSimpleName());
             ToolRunner.printGenericCommandUsage(System.err);
             return -1;
         }
-        System.out.println("Cantidad de jobs a ejecutar: " + jobCount);
+        System.out.println("Cantidad de jobs a ejecutar: 3");
 
         Job job = Job.getInstance(getConf(), "HPC - Mosquitos - " + 1);
         job.setJarByClass(getClass());
