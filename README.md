@@ -1,4 +1,4 @@
-# mosquitos-hpc: alisis de ventas de repelentes con relación a las invasiones de mosquitos de 2024
+# mosquitos-hpc: análisis de ventas de repelentes con relación a las invasiones de mosquitos de 2024
 
 Proyecto Java para Hadoop MapReduce que permite ejecutar algoritmos de detección de tendencias sobre series temporales, aplicados a datos
 de ventas de productos relacionados con control de plagas (repelentes e insecticidas).
